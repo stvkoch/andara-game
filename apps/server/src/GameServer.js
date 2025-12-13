@@ -46,16 +46,8 @@ export class GameServer {
         this.handleJoin(ws, payload);
         break;
       
-      case 'playerInput':
-        this.handlePlayerInput(ws, payload);
-        break;
-      
-      case 'playerState':
-        this.handlePlayerState(ws, payload);
-        break;
-      
-      case 'energyChange':
-        this.handleEnergyChange(ws, payload);
+      case 'playerStateUpdate':
+        this.handlePlayerStateUpdate(ws, payload);
         break;
       
       case 'ping':
@@ -123,9 +115,9 @@ export class GameServer {
   }
 
   /**
-   * Handle player input
+   * Handle player state update - relay to other players
    */
-  handlePlayerInput(ws, payload) {
+  handlePlayerStateUpdate(ws, payload) {
     const playerInfo = this.players.get(ws);
     
     if (!playerInfo) {
@@ -146,61 +138,8 @@ export class GameServer {
       return;
     }
 
-    // Update player input in room
-    const inputData = {
-      ...payload,
-      timestamp: Date.now()
-    };
-    
-    // Log significant input changes
-    if (payload.shouldLaunch || payload.shouldFire) {
-      console.log(`[SERVER] Received input from player ${playerInfo.playerId.substring(0, 8)}:`, {
-        shouldLaunch: payload.shouldLaunch,
-        shouldFire: payload.shouldFire,
-        controlMode: payload.controlMode
-      });
-    }
-    
-    room.updatePlayerInput(playerInfo.playerId, inputData);
-  }
-
-  /**
-   * Handle player state update (position, velocity, energy)
-   */
-  handlePlayerState(ws, payload) {
-    const playerInfo = this.players.get(ws);
-    
-    if (!playerInfo) {
-      ws.send(JSON.stringify({
-        type: 'error',
-        message: 'Not in a room. Please join first.'
-      }));
-      return;
-    }
-
-    const room = this.rooms.get(playerInfo.roomId);
-    
-    if (!room) {
-      ws.send(JSON.stringify({
-        type: 'error',
-        message: 'Room not found'
-      }));
-      return;
-    }
-
-    // Update player position/state in room
-    console.log(`[SERVER] Received state update from player ${playerInfo.playerId.substring(0, 8)}:`, {
-      position: `(${payload.position.x.toFixed(1)}, ${payload.position.y.toFixed(1)})`,
-      velocity: `(${payload.velocity.x.toFixed(2)}, ${payload.velocity.y.toFixed(2)})`,
-      energy: payload.energy.toFixed(1)
-    });
-    
-    room.updatePlayerPosition(
-      playerInfo.playerId,
-      payload.position,
-      payload.velocity,
-      payload.energy
-    );
+    // Update player state in room and relay to other players
+    room.updatePlayerState(playerInfo.playerId, payload);
   }
 
   /**
@@ -240,36 +179,5 @@ export class GameServer {
     console.log(`Player ${playerInfo.playerId} disconnected`);
   }
 
-  /**
-   * Handle energy change from laser hit
-   */
-  handleEnergyChange(ws, payload) {
-    const playerInfo = this.players.get(ws);
-    
-    if (!playerInfo) {
-      ws.send(JSON.stringify({
-        type: 'error',
-        message: 'Not in a room. Please join first.'
-      }));
-      return;
-    }
-
-    const room = this.rooms.get(playerInfo.roomId);
-    
-    if (!room) {
-      ws.send(JSON.stringify({
-        type: 'error',
-        message: 'Room not found'
-      }));
-      return;
-    }
-
-    // Update energy and broadcast to other players
-    room.updatePlayerEnergy(
-      payload.playerId,
-      payload.energy,
-      payload.shieldPower
-    );
-  }
 }
 

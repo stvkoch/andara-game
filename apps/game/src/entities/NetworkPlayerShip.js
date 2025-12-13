@@ -39,19 +39,28 @@ export class NetworkPlayerShip extends Ship {
     this.targetVelocity.x = shipState.velocity.x;
     this.targetVelocity.y = shipState.velocity.y;
 
-    // Update ship properties directly
-    this.energy = shipState.energy;
-    this.maxEnergy = shipState.maxEnergy;
-    this.controlMode = shipState.controlMode;
-    this.engineAngle = shipState.engineAngle;
-    this.enginePower = shipState.enginePower;
-    this.weaponAngle = shipState.weaponAngle;
-    this.weaponPower = shipState.weaponPower;
-    this.shieldAngle = shipState.shieldAngle;
-    this.shieldPower = shipState.shieldPower;
-    this.shield.active = shipState.shieldActive || false;
-    this.shield.energized = shipState.shieldEnergized !== undefined ? shipState.shieldEnergized : (shipState.shieldActive || false);
-    this.exploded = shipState.exploded || false;
+    // Use parent Ship's updateState method
+    this.updateState({
+      position: shipState.position,
+      velocity: shipState.velocity,
+      energy: shipState.energy,
+      shieldPower: shipState.shieldPower,
+      shieldEnergized: shipState.shieldEnergized !== undefined ? shipState.shieldEnergized : (shipState.shieldActive || false),
+      shieldAngle: shipState.shieldAngle,
+      controlMode: shipState.controlMode,
+      engineAngle: shipState.engineAngle,
+      enginePower: shipState.enginePower,
+      weaponAngle: shipState.weaponAngle,
+      weaponPower: shipState.weaponPower
+    });
+    
+    // Update properties not handled by updateState
+    if (shipState.maxEnergy !== undefined) {
+      this.maxEnergy = shipState.maxEnergy;
+    }
+    if (shipState.exploded !== undefined) {
+      this.exploded = shipState.exploded;
+    }
 
     // Update network AI with state
     if (this.networkAI) {

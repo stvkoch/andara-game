@@ -22,9 +22,45 @@ export class Laser extends Entity {
     this.id = id;
   }
 
-  update() {
-      this.position.add(this.velocity);
-      this.life--;
+  update(dt, bounds = null) {
+    this.position.add(this.velocity);
+    this.life--;
+    
+    // Check bounds if provided
+    if (bounds) {
+      if (this.position.x < 0 || this.position.x > bounds.width ||
+          this.position.y < 0 || this.position.y > bounds.height) {
+        return false; // Out of bounds
+      }
+    }
+    
+    // Check if laser expired
+    if (this.life <= 0) {
+      return false; // Expired
+    }
+    
+    return true; // Still alive
+  }
+  
+  /**
+   * Check collision with target and apply damage
+   */
+  checkCollision(target, targetSize) {
+    const dx = this.position.x - target.position.x;
+    const dy = this.position.y - target.position.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    
+    return dist < targetSize;
+  }
+  
+  /**
+   * Hit target - returns true if hit was successful
+   */
+  hitTarget(target) {
+    if (target.takeDamage) {
+      return target.takeDamage(this.damage, this.position, this.id);
+    }
+    return false;
   }
 
   draw(ctx) {

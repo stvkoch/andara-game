@@ -130,7 +130,7 @@ export class Input {
   }
 
   setMode(mode) {
-      this.ship.controlMode = mode;
+      this.ship.updateState({ controlMode: mode });
       
       this.engineGroup.classList.remove('active-mode');
       this.weaponGroup.classList.remove('active-mode');
@@ -165,7 +165,7 @@ export class Input {
     // UI Updates - update ship state only, then sync UI
     this.angleInput.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value);
-        this.ship.engineAngle = val * (Math.PI / 180);
+        this.ship.updateState({ engineAngle: val * (Math.PI / 180) });
         this.syncShipToUI();
         this.updatePreview();
         this.sendInputToNetwork();
@@ -173,7 +173,7 @@ export class Input {
 
     this.powerInput.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value);
-        this.ship.enginePower = val;
+        this.ship.updateState({ enginePower: val });
         this.syncShipToUI();
         this.sendInputToNetwork();
     });
@@ -181,13 +181,13 @@ export class Input {
     // Weapon Listeners
     this.weaponAngleInput.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value);
-        this.ship.weaponAngle = val * (Math.PI / 180);
+        this.ship.updateState({ weaponAngle: val * (Math.PI / 180) });
         this.syncShipToUI();
         this.sendInputToNetwork();
     });
     this.weaponPowerInput.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value);
-        this.ship.weaponPower = val;
+        this.ship.updateState({ weaponPower: val });
         this.syncShipToUI();
         this.sendInputToNetwork();
     });
@@ -198,16 +198,22 @@ export class Input {
     // Shield Listeners
     this.shieldAngleInput.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value);
-        this.ship.shieldAngle = val * (Math.PI / 180);
+        this.ship.updateState({ shieldAngle: val * (Math.PI / 180) });
         this.syncShipToUI();
         this.sendInputToNetwork();
     });
     this.shieldPowerInput.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value);
+        const oldShieldPower = this.ship.shieldPower;
         if (this.ship.shield.energized) {
-          this.ship.energy -= this.ship.shieldPower - val;
+          const energyChange = oldShieldPower - val;
+          this.ship.updateState({ 
+            shieldPower: val,
+            energy: this.ship.energy - energyChange
+          });
+        } else {
+          this.ship.updateState({ shieldPower: val });
         }
-        this.ship.shieldPower = val;
         
         this.syncShipToUI();
         this.sendInputToNetwork();
@@ -300,17 +306,23 @@ export class Input {
         }
 
         if (changed) {
-            // Update ship state only
+            // Update ship state using updateState
+            const stateUpdate = {};
             if (this.ship.controlMode === 'ENGINE') {
-                this.ship.engineAngle = angleVal * (Math.PI / 180);
-                this.ship.enginePower = powerVal;
+                stateUpdate.engineAngle = angleVal * (Math.PI / 180);
+                stateUpdate.enginePower = Math.min(100, powerVal);
             } else if (this.ship.controlMode === 'WEAPON') {
-                this.ship.weaponAngle = angleVal * (Math.PI / 180);
-                this.ship.weaponPower = powerVal;
+                stateUpdate.weaponAngle = angleVal * (Math.PI / 180);
+                stateUpdate.weaponPower = Math.min(100, powerVal);
             } else if (this.ship.controlMode === 'SHIELD') {
-                this.ship.shieldAngle = angleVal * (Math.PI / 180);
-                this.ship.shieldPower = powerVal;
+                stateUpdate.shieldAngle = angleVal * (Math.PI / 180);
+                stateUpdate.shieldPower = Math.min(100, powerVal);
+                if (this.ship.shield.energized) {
+                  const energyChange = Math.min(90, powerVal - this.ship.shieldPower);
+                  stateUpdate.energy = Math.min(100, this.ship.energy - energyChange);
+                }
             }
+            this.ship.updateState(stateUpdate);
             
             // Sync UI from ship state
             this.syncShipToUI();
@@ -326,8 +338,9 @@ export class Input {
   }
 
   triggerShield() {
-    // Toggle shield energized state
-    this.ship.shield.energized = !this.ship.shield.energized;
+    // Toggle shield energized state using updateState
+    const newEnergized = !this.ship.shield.energized;
+    this.ship.setShieldState(newEnergized, this.ship.shieldAngle, this.ship.shieldPower);
     
     // Send shield toggle to network
     if (this.networkClient && this.networkClient.isConnected()) {

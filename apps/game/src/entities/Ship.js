@@ -1,4 +1,6 @@
 import { Entity } from './Entity.js';
+import { Vector2 } from '../utils/Vector2.js';
+import { Laser } from './Laser.js';
 
 const defaultShipOptions = {
   x: 0,
@@ -62,6 +64,7 @@ export class Ship extends Entity {
     this.weaponPower = mergedOptions.weaponPower; // Default 50%
     this.shieldAngle = Math.random() * 360;
     this.shieldPower = mergedOptions.shieldPower; // Default 50%
+    this.fireCost = mergedOptions.fireCost || Math.random() * 0.3 + 0.2;
     
     this.shield = {
         active: false,
@@ -82,6 +85,239 @@ export class Ship extends Entity {
     this.exploded = false;
     this.explosionTimer = 0;
     this.explosionDuration = mergedOptions.explosionDuration;
+    
+    // Callback for actions (fire, launch, shield change)
+    this.onAction = null;
+    this.onEnergyChange = null;
+  }
+  
+  /**
+   * Update state from server/network
+   */
+  updateState(state) {
+    if (state.position) {
+      this.position.x = state.position.x;
+      this.position.y = state.position.y;
+    }
+    if (state.velocity) {
+      this.velocity.x = state.velocity.x;
+      this.velocity.y = state.velocity.y;
+    }
+    if (state.energy !== undefined) {
+      this.energy = state.energy;
+    }
+    if (state.shieldPower !== undefined) {
+      this.shieldPower = state.shieldPower;
+    }
+    if (state.shieldEnergized !== undefined) {
+      this.shield.energized = state.shieldEnergized;
+      this.shield.active = state.shieldEnergized;
+    }
+    if (state.shieldAngle !== undefined) {
+      this.shieldAngle = state.shieldAngle;
+      this.shield.angle = state.shieldAngle;
+    }
+    if (state.controlMode !== undefined) {
+      this.controlMode = state.controlMode;
+    }
+    if (state.engineAngle !== undefined) {
+      this.engineAngle = state.engineAngle;
+    }
+    if (state.enginePower !== undefined) {
+      this.enginePower = state.enginePower;
+    }
+    if (state.weaponAngle !== undefined) {
+      this.weaponAngle = state.weaponAngle;
+    }
+    if (state.weaponPower !== undefined) {
+      this.weaponPower = state.weaponPower;
+    }
+    if (this.energy < 20) {
+      this.color = "#ff0000";
+    } else {
+      this.color = this.isNPC ? "#ffaa00" : "#00f0ff";
+    }
+  }
+  
+  /**
+   * Add energy to the ship, capped at maxEnergy
+   * @param {number} amount - Amount of energy to add
+   * @returns {number} - Actual amount of energy added
+   */
+  addEnergy(amount) {
+    if (amount <= 0 || this.exploded) {
+      return 0;
+    }
+    
+    const oldEnergy = this.energy;
+    const newEnergy = Math.min(this.maxEnergy, this.energy + amount);
+    
+    // Use updateState to update energy
+    this.updateState({ energy: newEnergy });
+    
+    // Trigger energy change callback if set
+    if (this.onEnergyChange) {
+      this.onEnergyChange(this.energy, this.shieldPower);
+    }
+  }
+  
+  /**
+   * Apply action (fire, launch, shield change)
+   */
+  applyAction(action, physics = null) {
+    switch (action.type) {
+      case 'fire':
+        return this.fire(physics);
+      
+      case 'launch':
+        return this.launch(action.angle, action.power, physics);
+      
+      case 'shieldChange':
+        this.setShieldState(action.shieldEnergized, action.shieldAngle, action.shieldPower);
+        return true;
+      
+      default:
+        return false;
+    }
+  }
+  
+  /**
+   * Fire weapon - creates laser and consumes energy
+   */
+  fire(physics = null) {
+    const fireCost = this.fireCost * this.weaponPower;
+    const laserPower = this.fireCost * this.weaponPower;
+    if (this.energy < fireCost || this.exploded) {
+      return null;
+    }
+    
+    // Disable shield when shooting
+    this.shield.energized = false;
+    this.shield.active = false;
+    
+    const laser = new Laser(
+      this.position.x,
+      this.position.y,
+      this.weaponAngle,
+      laserPower,
+      this.id
+    );
+    
+    this.energy -= fireCost;
+    
+    if (this.onAction) {
+      this.onAction('fire', {
+        position: { x: this.position.x, y: this.position.y },
+        weaponAngle: this.weaponAngle,
+        weaponPower: laserPower
+      });
+    }
+    
+    return laser;
+  }
+  
+  /**
+   * Launch engine - applies force and consumes energy
+   */
+  launch(angle, power, physics) {
+    if (!physics || this.energy < power * 3 || this.exploded) {
+      return false;
+    }
+    
+    const force = Vector2.fromAngle(angle).mult(power);
+    physics.applyForce(this, force);
+    this.energy -= power * 3;
+    
+    if (this.onAction) {
+      this.onAction('launch', {
+        engineAngle: angle,
+        enginePower: power
+      });
+    }
+    
+    return true;
+  }
+  
+  /**
+   * Set shield state
+   */
+  setShieldState(energized, angle, power) {
+    this.shield.energized = energized;
+    this.shield.active = energized;
+    if (angle !== undefined) {
+      this.shieldAngle = angle;
+      this.shield.angle = angle;
+    }
+    if (power !== undefined) {
+      this.shieldPower = power;
+      this.shield.power = power;
+    }
+    
+    if (this.onAction) {
+      this.onAction('shieldChange', {
+        shieldEnergized: energized,
+        shieldAngle: this.shieldAngle,
+        shieldPower: this.shieldPower
+      });
+    }
+  }
+  
+  /**
+   * Check if shield protects against laser
+   */
+  checkShieldProtection(laserPosition) {
+    if (!this.shield.active || this.shieldPower <= 0) {
+      return false;
+    }
+    
+    const dx = laserPosition.x - this.position.x;
+    const dy = laserPosition.y - this.position.y;
+    const angleToLaser = Math.atan2(dy, dx);
+    
+    let shieldFacing = this.shield.angle % (Math.PI * 2);
+    if (shieldFacing > Math.PI) shieldFacing -= Math.PI * 2;
+    
+    const maxSpread = Math.PI;
+    const spread = (this.shieldPower / 100) * maxSpread;
+    const halfSpread = spread / 2;
+    
+    let diff = angleToLaser - shieldFacing;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    
+    return Math.abs(diff) < halfSpread;
+  }
+  
+  /**
+   * Take damage from laser
+   */
+  takeDamage(damage, laserPosition, isMyLaser = false) {
+    if (this.exploded) return false;
+    
+    const isProtected = this.checkShieldProtection(laserPosition);
+    
+    if (isProtected && this.shieldPower > 0) {
+      // Shield absorbs damage
+      this.shieldPower -= damage;
+      if (this.shieldPower < 0) this.shieldPower = 0;
+      
+      if (this.onEnergyChange) {
+        this.onEnergyChange(this.energy, this.shieldPower);
+      }
+      
+      return true; // Damage absorbed
+    } else {
+      // Hull takes damage
+      this.energy -= damage;
+
+       // Damage indication
+      
+      if (this.onEnergyChange) {
+        this.onEnergyChange(this.energy, this.shieldPower);
+      }
+      
+      return true; // Damage taken
+    }
   }
   
   checkExplosion() {

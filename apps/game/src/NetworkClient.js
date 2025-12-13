@@ -130,35 +130,40 @@ export class NetworkClient {
   }
 
   /**
-   * Send player input to server
+   * Send player state update to server (replaces sendInput)
    */
-  sendInput(input) {
+  sendStateUpdate(state) {
     if (!this.connected || !this.ws) return;
 
-    // Throttle continuous input
+    // Throttle continuous updates
     const now = Date.now();
-    const isAction = input.shouldLaunch || input.shouldFire || input.shieldEnergized !== undefined;
-    
-    if (!isAction && (now - this.lastInputSend) < this.inputThrottleMs) {
+    if ((now - this.lastInputSend) < this.inputThrottleMs) {
       return;
     }
 
     this.lastInputSend = now;
 
     this.send({
-      type: 'playerInput',
-      payload: {
-        controlMode: input.controlMode,
-        engineAngle: input.engineAngle,
-        enginePower: input.enginePower,
-        weaponAngle: input.weaponAngle,
-        weaponPower: input.weaponPower,
-        shieldAngle: input.shieldAngle,
-        shieldPower: input.shieldPower,
-        shouldLaunch: input.shouldLaunch || false,
-        shouldFire: input.shouldFire || false,
-        shieldEnergized: input.shieldEnergized || false
-      }
+      type: 'playerStateUpdate',
+      payload: state
+    });
+  }
+  
+  /**
+   * Send player input to server (deprecated - use sendStateUpdate)
+   * Kept for backward compatibility
+   */
+  sendInput(input) {
+    // Convert input to state update format
+    this.sendStateUpdate({
+      controlMode: input.controlMode,
+      engineAngle: input.engineAngle,
+      enginePower: input.enginePower,
+      weaponAngle: input.weaponAngle,
+      weaponPower: input.weaponPower,
+      shieldAngle: input.shieldAngle,
+      shieldPower: input.shieldPower,
+      shieldEnergized: input.shieldEnergized || false
     });
   }
 
@@ -219,7 +224,15 @@ export class NetworkClient {
         }
         break;
 
+      case 'playerStateUpdate':
+        console.log(`[CLIENT] Received state update from player ${data.playerId?.substring(0, 8) || 'unknown'}`);
+        if (this.onPlayerStateUpdate) {
+          this.onPlayerStateUpdate(data.playerId, data.state);
+        }
+        break;
+
       case 'action':
+        // Legacy support - convert to state update
         console.log(`[CLIENT] Received action message: ${data.action?.type} from player ${data.action?.playerId?.substring(0, 8) || 'unknown'}`);
         if (this.onAction) {
           this.onAction(data.action);
