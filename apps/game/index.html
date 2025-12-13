@@ -1,135 +1,222 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Space Physics Game</title>
-  </head>
-  <body>
-    <div id="app">
-      <canvas id="gameCanvas"></canvas>
-      <div id="ui-layer">
-        <!-- Multiplayer controls (hidden) -->
-        <div id="multiplayer-controls" style="display: none; position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; color: white; font-size: 12px;">
-          <div style="margin-bottom: 5px;">
-            <label>Server: <input type="text" id="serverUrl" value="ws://localhost:3001" style="width: 150px; padding: 2px;"></label>
-          </div>
-          <div style="margin-bottom: 5px;">
-            <label>Name: <input type="text" id="playerName" value="Player" style="width: 100px; padding: 2px;"></label>
-          </div>
-          <div style="margin-bottom: 5px;">
-            <button id="connectBtn" style="padding: 5px 10px; margin-right: 5px;">Connect</button>
-            <button id="disconnectBtn" style="padding: 5px 10px; display: none;">Disconnect</button>
-          </div>
-          <div>
-            <span>Status: <span id="connectionStatus" style="color: #f00;">Disconnected</span></span>
-            <span style="margin-left: 10px;">Players: <span id="playerCount">0</span></span>
-          </div>
-        </div>
-        
-        <!-- Top UI Bar -->
-        <div id="top-ui-bar" class="top-ui-bar">
-          <!-- Left: System Selector Buttons -->
-          <div id="system-selector" class="system-selector">
-            <button id="engineModeBtn" class="system-btn active" data-mode="ENGINE" title="Engine System (E)">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2L2 7L12 12L22 7L12 2Z"/>
-                <path d="M2 17L12 22L22 17"/>
-                <path d="M2 12L12 17L22 12"/>
-              </svg>
-            </button>
-            <button id="weaponModeBtn" class="system-btn" data-mode="WEAPON" title="Weapon System (W)">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2L3 7L12 12L21 7L12 2Z"/>
-                <path d="M3 17L12 22L21 17"/>
-                <path d="M3 12L12 17L21 12"/>
-              </svg>
-            </button>
-            <button id="shieldModeBtn" class="system-btn" data-mode="SHIELD" title="Shield System (S)">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2L3 7L12 12L21 7L12 2Z" stroke-linecap="round"/>
-                <path d="M12 12L3 17L12 22L21 17L12 12Z" stroke-linecap="round"/>
-              </svg>
-            </button>
-          </div>
-          
-          <!-- Middle: Energy Bar -->
-          <div id="energy-display" class="energy-display-top">
-            <div class="energy-bar-container">
-              <div id="energyBar"></div>
-            </div>
-            <span id="energyValue" class="energy-value">100%</span>
-          </div>
-          
-          <!-- Right: Direction Indicator (Radar) -->
-          <div id="direction-indicator" class="direction-indicator">
-            <svg width="60" height="60" viewBox="0 0 60 60">
-              <circle cx="30" cy="30" r="28" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2"/>
-              <circle cx="30" cy="30" r="20" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
-              <line id="directionNeedle" x1="30" y1="30" x2="30" y2="10" stroke="#0f0" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-          </div>
-        </div>
 
-        <!-- Bottom UI Bar -->
-        <div id="bottom-ui-bar" class="bottom-ui-bar">
-          <!-- Left: Joystick for Angle Control -->
-          <div id="joystick-container" class="joystick-container">
-            <div id="joystick" class="joystick">
-              <div id="joystick-knob" class="joystick-knob"></div>
-            </div>
-            <div class="joystick-labels">
-              <span class="joystick-label-top">0°</span>
-              <span class="joystick-label-right">90°</span>
-              <span class="joystick-label-bottom">180°</span>
-              <span class="joystick-label-left">270°</span>
-            </div>
-          </div>
-          
-          <!-- Middle: Horizontal Power Slider -->
-          <div id="power-slider-container" class="power-slider-container">
-            <div class="power-slider-labels">
-              <span class="power-label-left">0%</span>
-              <span class="power-label-right">100%</span>
-            </div>
-            <div class="power-slider-wrapper">
-              <input type="range" id="powerInput" class="power-slider" min="0" max="100" value="50">
-              <div id="powerValue" class="power-value-display">50%</div>
-            </div>
-          </div>
-          
-          <!-- Right: Action Button -->
-          <button id="actionBtn" class="action-btn-circle">
-            <svg id="actionIcon" width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M8 5v14l11-7z"/>
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Space Physics Game</title>
+</head>
+
+<body>
+  <div id="app">
+    <canvas id="gameCanvas"></canvas>
+    <div id="ui-layer">
+      <!-- Multiplayer controls (hidden) -->
+      <div id="multiplayer-controls"
+        style="display: none; position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; color: white; font-size: 12px;">
+        <div style="margin-bottom: 5px;">
+          <label>Server: <input type="text" id="serverUrl" value="ws://localhost:3001"
+              style="width: 150px; padding: 2px;"></label>
+        </div>
+        <div style="margin-bottom: 5px;">
+          <label>Name: <input type="text" id="playerName" value="Player" style="width: 100px; padding: 2px;"></label>
+        </div>
+        <div style="margin-bottom: 5px;">
+          <button id="connectBtn" style="padding: 5px 10px; margin-right: 5px;">Connect</button>
+          <button id="disconnectBtn" style="padding: 5px 10px; display: none;">Disconnect</button>
+        </div>
+        <div>
+          <span>Status: <span id="connectionStatus" style="color: #f00;">Disconnected</span></span>
+          <span style="margin-left: 10px;">Players: <span id="playerCount">0</span></span>
+        </div>
+      </div>
+
+      <!-- Top UI Bar -->
+      <div id="top-ui-bar" class="top-ui-bar">
+        <!-- Left: System Selector Buttons -->
+        <div id="system-selector" class="system-selector">
+          <button id="engineModeBtn" class="system-btn active" data-mode="ENGINE" title="Engine System (E)">
+            <svg  fill="currentColor" stroke="currentColor" viewBox="0 0 509.824 509.824">
+<g>
+	<g>
+		<g>
+			<path d="M425.579,254.912c0-11.776,9.536-21.333,21.333-21.333h62.912c-4.523-54.571-26.155-104.277-59.605-143.808
+				l-44.459,44.459c-4.16,4.181-9.621,6.251-15.083,6.251c-5.461,0-10.901-2.069-15.083-6.251c-8.32-8.32-8.32-21.824,0-30.165
+				l44.459-44.459C380.544,26.155,330.816,4.523,276.245,0v62.912c0,11.776-9.536,21.333-21.333,21.333
+				c-11.797,0-21.333-9.557-21.333-21.333V0C179.008,4.523,129.28,26.155,89.771,59.605l44.459,44.459
+				c8.32,8.341,8.32,21.845,0,30.165c-4.181,4.181-9.621,6.251-15.083,6.251c-5.461,0-10.923-2.069-15.083-6.251L59.605,89.792
+				C26.155,129.301,4.523,179.008,0,233.579h62.912c11.797,0,21.333,9.557,21.333,21.333s-9.536,21.333-21.333,21.333H0
+				c4.523,54.571,26.155,104.277,59.605,143.808l44.459-44.459c8.32-8.341,21.824-8.341,30.165,0c8.32,8.32,8.32,21.824,0,30.165
+				l-44.459,44.459c39.531,33.451,89.237,55.083,143.808,59.605v-62.912c0-11.776,9.536-21.333,21.333-21.333
+				c11.797,0,21.333,9.557,21.333,21.333v62.912c54.571-4.523,104.299-26.155,143.808-59.605l-44.459-44.459
+				c-8.32-8.341-8.32-21.845,0-30.165c8.341-8.341,21.845-8.341,30.165,0l44.459,44.459c33.451-39.531,55.083-89.237,59.605-143.808
+				h-62.912C435.115,276.245,425.579,266.688,425.579,254.912z M254.912,382.912c-70.592,0-128-57.408-128-128s57.408-128,128-128
+				c35.157,0,67.051,14.272,90.219,37.291c0.085,0.085,0.192,0.107,0.277,0.192s0.107,0.213,0.192,0.299
+				c23.04,23.147,37.312,55.04,37.312,90.219C382.912,325.504,325.504,382.912,254.912,382.912z"/>
+			<path d="M269.995,269.995c-4.16,4.16-9.621,6.251-15.083,6.251c-5.461,0-10.923-2.091-15.083-6.251
+				c-8.341-8.32-8.341-21.824,0-30.165l58.155-58.155c-12.693-7.509-27.285-12.096-43.072-12.096
+				c-47.061,0-85.333,38.272-85.333,85.333s38.272,85.333,85.333,85.333s85.333-38.272,85.333-85.333
+				c0-15.787-4.608-30.379-12.096-43.072L269.995,269.995z"/>
+		</g>
+	</g>
+</g>
+            </svg>
+          </button>
+          <button id="weaponModeBtn" class="system-btn" data-mode="WEAPON" title="Weapon System (W)">
+
+
+
+            <svg fill="currentColor" stroke="currentColor" stroke-width="2" viewBox="0 0 491.518 491.518">
+              <g>
+                <g>
+                  <g>
+                    <path
+                      d="M174.952,146.96c5.714,11.735,10.609,23.654,14.561,35.43c2.888,8.561,10.854,13.967,19.415,13.967
+                              				c2.171,0,4.362-0.348,6.533-1.085c10.711-3.584,16.486-15.196,12.882-25.928c-4.506-13.435-10.076-26.993-16.548-40.305
+                              				c-4.936-10.138-17.162-14.397-27.382-9.462C174.235,124.535,170.017,136.782,174.952,146.96z" />
+                    <path d="M310.972,369.56c-10.199-4.936-22.446-0.655-27.341,9.544c-5.1,10.568-11.674,20.357-19.538,29.102
+                              				c-24.433,27.156-59.126,42.721-96.01,42.353c-36.557-0.225-71.352-16.138-95.478-43.602
+                              				c-25.702-29.286-35.983-68.444-29.901-105.574c11.715,24.392,23.04,40.571,23.798,41.656c5.632,7.926,15.892,9.953,24.822,6.001
+                              				c8.909-3.953,13.619-14.541,11.489-24.064c-13.476-60.703,3.645-125.645,45.834-173.691l35.656-40.632
+                              				c7.455-8.499,6.615-21.443-1.884-28.897c-8.499-7.455-21.443-6.595-28.897,1.884l-35.656,40.612
+                              				c-28.467,32.44-47.452,71.332-55.747,112.148c-2.601-6.82-8.704-11.817-16.036-12.943c-8.09-1.249-16.118,2.437-20.46,9.38
+                              				c-39.301,62.792-32.645,145.49,16.2,201.134c31.846,36.27,77.763,57.242,126.013,57.549h1.065
+                              				c47.862,0,93.614-20.337,125.645-55.91c10.445-11.633,19.19-24.658,25.969-38.707
+                              				C325.431,386.722,321.151,374.475,310.972,369.56z" />
+                    <path d="M313.463,287.74c-10.936,1.27-18.903,11.121-18.043,22.118l20.419-1.556l20.214-3.502
+                              				C334.373,293.904,324.542,286.45,313.463,287.74z" />
+                    <path d="M244.803,364.599c2.314,0.84,4.69,1.249,7.004,1.249c8.356,0,16.22-5.181,19.251-13.496l13.988-38.502
+                              				c3.85-10.629-1.618-22.364-12.247-26.235c-10.609-3.83-22.385,1.618-26.255,12.247l-13.988,38.482
+                              				C228.686,348.973,234.174,360.729,244.803,364.599z" />
+                    <path d="M208.124,266.119l-28.283,29.635c-7.803,8.172-7.496,21.135,0.676,28.959c3.973,3.768,9.073,5.652,14.152,5.652
+                              				c5.386,0,10.793-2.109,14.807-6.328l28.283-29.635c7.803-8.192,7.496-21.156-0.676-28.959
+                              				C228.911,257.64,215.968,257.948,208.124,266.119z" />
+                    <path d="M212.363,228.499c-4.116-10.568-15.974-15.77-26.501-11.674l-25.313,9.851c-10.547,4.096-15.77,15.954-11.674,26.501
+                              				c3.154,8.11,10.895,13.066,19.087,13.066c2.478,0,4.977-0.451,7.414-1.393l25.313-9.851
+                              				C211.237,250.905,216.459,239.047,212.363,228.499z" />
+                    <path
+                      d="M259.565,223.879c0.635,4.383,2.355,8.663,5.816,11.94c3.318,3.174,7.455,4.69,11.674,5.202
+                              				c2.335,3.523,5.468,6.533,9.749,8.09c2.294,0.84,4.669,1.249,6.984,1.249c8.376,0,16.22-5.161,19.251-13.496l13.906-38.216
+                              				l0.102-0.266c0.307-0.84,0.184-1.679,0.369-2.54c0.041-0.143,0.061-0.307,0.082-0.471c0.287-1.331,0.676-2.581,0.676-3.953
+                              				c0-0.266,0.041-0.512,0.041-0.778c-0.061-1.311-0.532-2.499-0.819-3.748c-0.225-0.983-0.143-1.966-0.512-2.949
+                              				c-0.041-0.123-0.164-0.205-0.205-0.328c-0.082-0.205-0.164-0.41-0.266-0.635c-0.532-1.208-1.475-2.191-2.253-3.277
+                              				c-0.676-0.963-1.188-2.028-2.007-2.847c-0.102-0.082-0.123-0.205-0.225-0.307c-0.021-0.021-0.061-0.021-0.102-0.061
+                              				c-0.737-0.696-1.782-1.085-2.621-1.679c-1.229-0.819-2.355-1.761-3.707-2.314c-0.205-0.082-0.369-0.205-0.573-0.287
+                              				c-0.061-0.02-0.082-0.061-0.123-0.082c-0.84-0.287-1.679-0.184-2.519-0.369c-0.143-0.041-0.266-0.041-0.41-0.061
+                              				c-1.352-0.287-2.662-0.696-4.055-0.696c-0.266,0-0.512-0.041-0.778-0.021c-1.147,0.041-2.191,0.492-3.297,0.717
+                              				c-0.061,0.021-0.123,0.021-0.164,0.041c-1.085,0.225-2.15,0.143-3.215,0.553l-38.175,14.848
+                              				c-10.527,4.096-15.749,15.974-11.653,26.522C252.315,218.227,255.613,221.626,259.565,223.879z" />
+                    <path d="M470.923,0h-57.938c-6.062,0-11.837,2.703-15.729,7.373l-75.223,90.235c-17.039,20.398-15.708,49.992,3.113,68.792
+                              				c9.994,9.974,22.999,15.032,36.086,15.032c11.551,0,23.183-3.953,32.768-11.981l90.071-75.325
+                              				c4.649-3.891,7.332-9.646,7.332-15.708V20.48C491.403,9.175,482.228,0,470.923,0z" />
+                  </g>
+                </g>
+              </g>
+            </svg>
+          </button>
+          <button id="shieldModeBtn" class="system-btn" data-mode="SHIELD" title="Shield System (S)">
+            <svg fill="currentColor" stroke="currentColor" viewBox="0 0 511.995 511.995">
+              <g>
+                <g>
+                  <g>
+                    <path d="M170.726,169.273c1.344,56.405,23.957,109.227,64,149.269l21.269,21.269l21.269-21.269
+                            				c40.043-40.043,62.656-92.864,64-149.269c-28.907-8.597-57.493-18.837-85.269-30.571
+                            				C228.219,150.435,199.633,160.675,170.726,169.273z" />
+                    <path
+                      d="M452.179,64.421l-13.099-2.624C378.835,49.744,320.445,29.712,265.533,2.256c-5.995-3.008-13.077-3.008-19.072,0
+                            				C191.549,29.712,133.16,49.744,72.915,61.797l-13.099,2.624c-9.984,1.984-17.152,10.752-17.152,20.907v78.571
+                            				c0,92.608,36.053,179.669,101.547,245.163l96.704,96.683c4.16,4.181,9.621,6.251,15.083,6.251c5.461,0,10.923-2.069,15.083-6.251
+                            				l96.704-96.683c65.493-65.493,101.547-152.555,101.547-245.163V85.328C469.331,75.173,462.163,66.405,452.179,64.421z
+                            				 M383.997,163.899c0,69.824-27.179,135.467-76.565,184.811l-36.352,36.373c-3.989,3.989-9.429,6.251-15.083,6.251
+                            				c-5.653,0-11.093-2.261-15.083-6.251l-36.352-36.373c-49.387-49.344-76.565-114.987-76.565-184.811v-10.688
+                            				c0-9.6,6.4-18.027,15.659-20.565c35.328-9.728,70.251-22.08,103.829-36.715c5.419-2.347,11.605-2.347,17.024,0
+                            				c33.579,14.635,68.501,26.987,103.829,36.715c9.259,2.539,15.659,10.965,15.659,20.565V163.899z" />
+                  </g>
+                </g>
+              </g>
             </svg>
           </button>
         </div>
 
-        <!-- Score Display (top right corner) -->
-        <div id="score-display" class="score-display">
-          <div>SCORE: <span id="scoreValue">0</span></div>
-          <div>LEVEL: <span id="levelValue">1</span></div>
+        <!-- Middle: Energy Bar -->
+        <div id="energy-display" class="energy-display-top">
+          <div class="energy-bar-container">
+            <div id="energyBar"></div>
+          </div>
+          <span id="energyValue" class="energy-value">100%</span>
         </div>
 
-        <!-- Hidden inputs for compatibility -->
-        <input type="range" id="angleInput" min="0" max="360" value="0" style="display: none;">
-        <input type="range" id="weaponAngleInput" min="0" max="360" value="0" style="display: none;">
-        <input type="range" id="weaponPowerInput" min="0" max="100" value="50" style="display: none;">
-        <input type="range" id="shieldAngleInput" min="0" max="360" value="0" style="display: none;">
-        <input type="range" id="shieldPowerInput" min="0" max="100" value="50" style="display: none;">
-        <span id="angleValue" class="value-display" style="display: none;">0°</span>
-        <span id="weaponAngleValue" class="value-display" style="display: none;">0°</span>
-        <span id="weaponPowerValue" class="value-display" style="display: none;">50%</span>
-        <span id="shieldAngleValue" class="value-display" style="display: none;">0°</span>
-        <span id="shieldPowerValue" class="value-display" style="display: none;">50%</span>
-        <button id="launchBtn" style="display: none;"></button>
-        <button id="fireBtn" style="display: none;"></button>
-        <button id="energizeShieldBtn" style="display: none;"></button>
-        <button id="resetBtn" style="display: none;"></button>
+        <!-- Right: Direction Indicator (Radar) -->
+        <div id="direction-indicator" class="direction-indicator">
+          <svg width="60" height="60" viewBox="0 0 60 60">
+            <circle cx="30" cy="30" r="28" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2" />
+            <circle cx="30" cy="30" r="20" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1" />
+            <line id="directionNeedle" x1="30" y1="30" x2="30" y2="10" stroke="#0f0" stroke-width="2"
+              stroke-linecap="round" />
+          </svg>
+        </div>
       </div>
+
+      <!-- Bottom UI Bar -->
+      <div id="bottom-ui-bar" class="bottom-ui-bar">
+        <!-- Left: Joystick for Angle Control -->
+        <div id="joystick-container" class="joystick-container">
+          <div id="joystick" class="joystick">
+            <div id="joystick-knob" class="joystick-knob"></div>
+          </div>
+          <div class="joystick-labels">
+            <span class="joystick-label-top">0°</span>
+            <span class="joystick-label-right">90°</span>
+            <span class="joystick-label-bottom">180°</span>
+            <span class="joystick-label-left">270°</span>
+          </div>
+        </div>
+
+        <!-- Middle: Horizontal Power Slider -->
+        <div id="power-slider-container" class="power-slider-container">
+          <div class="power-slider-labels">
+            <span class="power-label-left">0%</span>
+            <span class="power-label-right">100%</span>
+          </div>
+          <div class="power-slider-wrapper">
+            <input type="range" id="powerInput" class="power-slider" min="0" max="100" value="50">
+            <div id="powerValue" class="power-value-display">50%</div>
+          </div>
+        </div>
+
+        <!-- Right: Action Button -->
+        <button id="actionBtn" class="action-btn-circle">
+          <svg id="actionIcon" width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Score Display (top right corner) -->
+      <div id="score-display" class="score-display">
+        <div>SCORE: <span id="scoreValue">0</span></div>
+        <div>LEVEL: <span id="levelValue">1</span></div>
+      </div>
+
+      <!-- Hidden inputs for compatibility -->
+      <input type="range" id="angleInput" min="0" max="360" value="0" style="display: none;">
+      <input type="range" id="weaponAngleInput" min="0" max="360" value="0" style="display: none;">
+      <input type="range" id="weaponPowerInput" min="0" max="100" value="50" style="display: none;">
+      <input type="range" id="shieldAngleInput" min="0" max="360" value="0" style="display: none;">
+      <input type="range" id="shieldPowerInput" min="0" max="100" value="50" style="display: none;">
+      <span id="angleValue" class="value-display" style="display: none;">0°</span>
+      <span id="weaponAngleValue" class="value-display" style="display: none;">0°</span>
+      <span id="weaponPowerValue" class="value-display" style="display: none;">50%</span>
+      <span id="shieldAngleValue" class="value-display" style="display: none;">0°</span>
+      <span id="shieldPowerValue" class="value-display" style="display: none;">50%</span>
+      <button id="launchBtn" style="display: none;"></button>
+      <button id="fireBtn" style="display: none;"></button>
+      <button id="energizeShieldBtn" style="display: none;"></button>
+      <button id="resetBtn" style="display: none;"></button>
     </div>
-    <script type="module" src="/main.js"></script>
-  </body>
+  </div>
+  <script type="module" src="/main.js"></script>
+</body>
+
 </html>
