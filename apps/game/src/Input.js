@@ -1,6 +1,9 @@
 export class Input {
   constructor(ship) {
     this.ship = ship;
+    this.networkClient = null;
+    this.lastInputSend = 0;
+    this.inputThrottleMs = 100; // Throttle continuous input updates
     
     this.angleInput = document.getElementById('angleInput');
     this.powerInput = document.getElementById('powerInput');
@@ -35,6 +38,42 @@ export class Input {
     this.syncUIToShip();
 
     this.initListeners();
+  }
+
+  /**
+   * Set network client for multiplayer input
+   */
+  setNetworkClient(networkClient) {
+    this.networkClient = networkClient;
+  }
+
+  /**
+   * Send input to network client if connected
+   */
+  sendInputToNetwork() {
+    if (!this.networkClient || !this.networkClient.isConnected()) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - this.lastInputSend < this.inputThrottleMs) {
+      return;
+    }
+
+    this.lastInputSend = now;
+
+    this.networkClient.sendInput({
+      controlMode: this.ship.controlMode,
+      engineAngle: this.ship.engineAngle,
+      enginePower: this.ship.enginePower,
+      weaponAngle: this.ship.weaponAngle,
+      weaponPower: this.ship.weaponPower,
+      shieldAngle: this.ship.shieldAngle,
+      shieldPower: this.ship.shieldPower,
+      shouldLaunch: false,
+      shouldFire: false,
+      shieldEnergized: this.ship.shield.energized
+    });
   }
 
   syncUIToShip() {
@@ -129,12 +168,14 @@ export class Input {
         this.ship.engineAngle = val * (Math.PI / 180);
         this.syncShipToUI();
         this.updatePreview();
+        this.sendInputToNetwork();
     });
 
     this.powerInput.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value);
         this.ship.enginePower = val;
         this.syncShipToUI();
+        this.sendInputToNetwork();
     });
 
     // Weapon Listeners
@@ -142,11 +183,13 @@ export class Input {
         const val = parseFloat(e.target.value);
         this.ship.weaponAngle = val * (Math.PI / 180);
         this.syncShipToUI();
+        this.sendInputToNetwork();
     });
     this.weaponPowerInput.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value);
         this.ship.weaponPower = val;
         this.syncShipToUI();
+        this.sendInputToNetwork();
     });
     this.fireBtn.addEventListener('click', () => {
         this.triggerFire();
@@ -157,6 +200,7 @@ export class Input {
         const val = parseFloat(e.target.value);
         this.ship.shieldAngle = val * (Math.PI / 180);
         this.syncShipToUI();
+        this.sendInputToNetwork();
     });
     this.shieldPowerInput.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value);
@@ -166,6 +210,7 @@ export class Input {
         this.ship.shieldPower = val;
         
         this.syncShipToUI();
+        this.sendInputToNetwork();
     });
     this.energizeShieldBtn.addEventListener('click', () => {
         this.triggerShield();
@@ -273,6 +318,9 @@ export class Input {
             if (this.ship.controlMode === 'ENGINE') {
                 this.updatePreview();
             }
+            
+            // Send input to network
+            this.sendInputToNetwork();
         }
     });
   }
@@ -280,6 +328,22 @@ export class Input {
   triggerShield() {
     // Toggle shield energized state
     this.ship.shield.energized = !this.ship.shield.energized;
+    
+    // Send shield toggle to network
+    if (this.networkClient && this.networkClient.isConnected()) {
+      this.networkClient.sendInput({
+        controlMode: this.ship.controlMode,
+        engineAngle: this.ship.engineAngle,
+        enginePower: this.ship.enginePower,
+        weaponAngle: this.ship.weaponAngle,
+        weaponPower: this.ship.weaponPower,
+        shieldAngle: this.ship.shieldAngle,
+        shieldPower: this.ship.shieldPower,
+        shouldLaunch: false,
+        shouldFire: false,
+        shieldEnergized: this.ship.shield.energized
+      });
+    }
     
     if (this.onShieldCallback) {
         // Use ship state directly

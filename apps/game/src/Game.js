@@ -5,13 +5,34 @@ import { Laser } from './entities/Laser.js';
 import { Vector2 } from './utils/Vector2.js';
 import { Input } from './Input.js';
 import { NPCAI } from './entities/NPCAI.js';
+import { NetworkClient } from './NetworkClient.js';
+import { NetworkPlayerShip } from './entities/NetworkPlayerShip.js';
 
 export class Game {
-  constructor(canvasId) {
+  constructor(canvasId, options = {}) {
     this.canvas = document.getElementById(canvasId);
     this.ctx = this.canvas.getContext("2d");
     this.width = this.canvas.width = this.canvas.parentElement.clientWidth;
     this.height = this.canvas.height = this.canvas.parentElement.clientHeight;
+
+    // Multiplayer options
+    this.multiplayer = options.multiplayer || false;
+    this.networkClient = null;
+    this.networkPlayers = new Map(); // playerId -> NetworkPlayerShip
+    this.serverState = null;
+    this.lastServerUpdate = 0;
+    
+    // Track last sent state to only send on changes
+    this.lastSentState = {
+      position: { x: 0, y: 0 },
+      velocity: { x: 0, y: 0 },
+      energy: 0
+    };
+    this.stateChangeThreshold = {
+      position: 1.0, // Send if position changed by more than 1 unit
+      velocity: 0.1, // Send if velocity changed by more than 0.1
+      energy: 1.0    // Send if energy changed by more than 1 unit
+    };
 
     this.physics = new Physics(0.01); // Drag
     this.ship = new Ship({
@@ -20,16 +41,23 @@ export class Game {
       isNPC: false
     });
     this.input = new Input(this.ship);
+    
+    // Set network client reference in input if multiplayer
+    if (this.multiplayer) {
+      // Will be set after networkClient is created
+    }
 
     this.lasers = [];
     this.obstacles = [];
     this.stars = [];
     this.npcShips = [];
 
-    // Generate game elements
-    this.generateStars();
-    this.generateObstacles();
-    this.generateNPCs();
+    // Generate game elements (only in single-player)
+    if (!this.multiplayer) {
+      this.generateStars();
+      this.generateObstacles();
+      this.generateNPCs();
+    }
 
     this.entities = [this.ship, ...this.obstacles, ...this.npcShips];
 
@@ -49,6 +77,24 @@ export class Game {
         console.log(
           `Launch: Angle ${angle}, Power ${power}, Cost ${launchCost}`
         );
+        
+        // In multiplayer, send input to server (server handles physics)
+        if (this.multiplayer && this.networkClient && this.networkClient.isConnected()) {
+          this.networkClient.sendInput({
+            controlMode: this.ship.controlMode,
+            engineAngle: this.ship.engineAngle,
+            enginePower: this.ship.enginePower,
+            weaponAngle: this.ship.weaponAngle,
+            weaponPower: this.ship.weaponPower,
+            shieldAngle: this.ship.shieldAngle,
+            shieldPower: this.ship.shieldPower,
+            shouldLaunch: true,
+            shouldFire: false,
+            shieldEnergized: this.ship.shield.energized
+          });
+        }
+        
+        // Apply locally for prediction (hybrid mode)
         const force = Vector2.fromAngle(angle).mult(power);
         this.physics.applyForce(this.ship, force);
         this.ship.energy -= launchCost;
@@ -64,7 +110,24 @@ export class Game {
 
       if (this.ship.energy >= fireCost) {
         console.log(`Fire: Angle ${angle}, Power ${power}, Cost ${fireCost}`);
-        // Spawn Laser
+        
+        // In multiplayer, send input to server
+        if (this.multiplayer && this.networkClient && this.networkClient.isConnected()) {
+          this.networkClient.sendInput({
+            controlMode: this.ship.controlMode,
+            engineAngle: this.ship.engineAngle,
+            enginePower: this.ship.enginePower,
+            weaponAngle: this.ship.weaponAngle,
+            weaponPower: this.ship.weaponPower,
+            shieldAngle: this.ship.shieldAngle,
+            shieldPower: this.ship.shieldPower,
+            shouldLaunch: false,
+            shouldFire: true,
+            shieldEnergized: this.ship.shield.energized
+          });
+        }
+        
+        // Apply locally for prediction
         this.lasers.push(
           new Laser(
             this.ship.position.x,
@@ -101,6 +164,309 @@ export class Game {
 
     // Initialize score display
     this.updateScoreDisplay();
+  }
+
+  /**
+   * Initialize network client for multiplayer
+   */
+  initNetworkClient(serverUrl, playerName) {
+    if (!this.multiplayer) return;
+    
+    this.networkClient = new NetworkClient(this, serverUrl);
+    
+    // Set up callbacks
+    this.networkClient.onConnected = () => {
+      console.log('Connected to multiplayer server');
+      this.updateConnectionStatus(true);
+    };
+    
+    this.networkClient.onDisconnected = () => {
+      console.log('Disconnected from multiplayer server');
+      this.updateConnectionStatus(false);
+    };
+    
+    this.networkClient.onStateSnapshot = (snapshot, timestamp) => {
+      this.handleStateSnapshot(snapshot, timestamp);
+    };
+    
+    this.networkClient.onAction = (action) => {
+      this.handleAction(action);
+    };
+    
+    this.networkClient.onPlayerJoined = (playerId, playerName, playerCount) => {
+      console.log(`[CLIENT] Player joined: ${playerName} (${playerId.substring(0, 8)}), total players: ${playerCount}`);
+      this.updatePlayerCount(playerCount);
+    };
+    
+    this.networkClient.onPlayerLeft = (playerId, playerCount) => {
+      console.log(`[CLIENT] Player left: ${playerId.substring(0, 8)}, total players: ${playerCount}`);
+      this.updatePlayerCount(playerCount);
+      // Remove network player
+      if (this.networkPlayers.has(playerId)) {
+        const networkShip = this.networkPlayers.get(playerId);
+        const index = this.npcShips.indexOf(networkShip);
+        if (index > -1) {
+          this.npcShips.splice(index, 1);
+        }
+        this.networkPlayers.delete(playerId);
+        this.updateEntities();
+      }
+    };
+    
+    this.networkClient.onError = (error) => {
+      console.error('Network error:', error);
+    };
+    
+    // Set network client in input
+    this.input.setNetworkClient(this.networkClient);
+    
+    // Connect
+    this.networkClient.connect(playerName);
+  }
+
+  /**
+   * Handle server state snapshot (positions, energy, etc.)
+   */
+  handleStateSnapshot(snapshot, timestamp) {
+    this.serverState = snapshot;
+    this.lastServerUpdate = timestamp || Date.now();
+    
+    console.log(`[CLIENT] Received state snapshot: ${snapshot.players?.length || 0} players, ${snapshot.obstacles?.length || 0} obstacles, timestamp: ${timestamp}`);
+    
+    // Update world dimensions if different
+    if (snapshot.width && snapshot.height) {
+      if (this.width !== snapshot.width || this.height !== snapshot.height) {
+        console.log(`[CLIENT] World dimensions changed: ${this.width}x${this.height} -> ${snapshot.width}x${snapshot.height}`);
+        this.width = snapshot.width;
+        this.height = snapshot.height;
+      }
+    }
+    
+    // Sync stars (only once)
+    if (this.stars.length === 0 && snapshot.stars) {
+      console.log(`[CLIENT] Syncing ${snapshot.stars.length} stars from server`);
+      this.stars = snapshot.stars;
+    }
+    
+    // Sync obstacles from server
+    const obstaclesBefore = this.obstacles.length;
+    this.syncObstacles(snapshot.obstacles);
+    if (this.obstacles.length !== obstaclesBefore) {
+      console.log(`[CLIENT] Obstacles synced: ${obstaclesBefore} -> ${this.obstacles.length}`);
+    }
+    
+    // Sync network players (positions, energy, etc.)
+    const playersBefore = this.networkPlayers.size;
+    this.syncNetworkPlayers(snapshot.players);
+    if (this.networkPlayers.size !== playersBefore) {
+      console.log(`[CLIENT] Network players synced: ${playersBefore} -> ${this.networkPlayers.size}`);
+    }
+  }
+
+  /**
+   * Handle action from server (fire, launch, etc.)
+   */
+  handleAction(action) {
+    const { type, playerId } = action;
+    
+    // Skip our own actions (we already applied them locally)
+    if (playerId === this.networkClient?.getPlayerId()) {
+      console.log(`[CLIENT] Ignoring own action: ${type}`);
+      return;
+    }
+
+    console.log(`[CLIENT] Received action: ${type} from player ${playerId?.substring(0, 8) || 'unknown'}`);
+
+    switch (type) {
+      case 'playerFire':
+        this.handlePlayerFire(action);
+        break;
+      
+      case 'playerLaunch':
+        this.handlePlayerLaunch(action);
+        break;
+      
+      default:
+        console.warn(`[CLIENT] Unknown action type: ${type}`);
+    }
+  }
+
+  /**
+   * Handle player fire action
+   */
+  handlePlayerFire(action) {
+    const networkShip = this.networkPlayers.get(action.playerId);
+    if (!networkShip) {
+      console.warn(`[CLIENT] Cannot handle fire action: network ship ${action.playerId?.substring(0, 8)} not found`);
+      return;
+    }
+
+    // Create laser from action
+    const laser = new Laser(
+      action.position.x,
+      action.position.y,
+      action.weaponAngle,
+      action.weaponPower * 1.2, // damage
+      action.playerId
+    );
+    this.lasers.push(laser);
+    console.log(`[CLIENT] Applied fire action: created laser at (${action.position.x.toFixed(1)}, ${action.position.y.toFixed(1)}) with angle ${(action.weaponAngle * 180 / Math.PI).toFixed(1)}°`);
+  }
+
+  /**
+   * Handle player launch action
+   */
+  handlePlayerLaunch(action) {
+    const networkShip = this.networkPlayers.get(action.playerId);
+    if (!networkShip) {
+      console.warn(`[CLIENT] Cannot handle launch action: network ship ${action.playerId?.substring(0, 8)} not found`);
+      return;
+    }
+
+    // Apply launch force to network ship
+    const force = Vector2.fromAngle(action.engineAngle).mult(action.enginePower / 10);
+    this.physics.applyForce(networkShip, force);
+    console.log(`[CLIENT] Applied launch action: applied force ${force.mag().toFixed(2)} at angle ${(action.engineAngle * 180 / Math.PI).toFixed(1)}° to player ${action.playerId?.substring(0, 8)}`);
+  }
+
+  /**
+   * Sync obstacles from server state
+   */
+  syncObstacles(serverObstacles) {
+    if (!serverObstacles) return;
+    
+    // Create a map of server obstacle IDs
+    const serverIds = new Set(serverObstacles.map(o => o.id));
+    
+    // Remove obstacles not in server state
+    this.obstacles = this.obstacles.filter(obs => {
+      const obsId = obs.id || `${obs.position.x},${obs.position.y}`;
+      return serverIds.has(obsId);
+    });
+    
+    // Add/update obstacles from server
+    serverObstacles.forEach(serverObs => {
+      const existing = this.obstacles.find(obs => {
+        const obsId = obs.id || `${obs.position.x},${obs.position.y}`;
+        return obsId === serverObs.id;
+      });
+      
+      if (existing) {
+        existing.position.x = serverObs.x;
+        existing.position.y = serverObs.y;
+        existing.size = serverObs.size;
+        existing.id = serverObs.id;
+      } else {
+        const obstacle = new Obstacle(serverObs.x, serverObs.y, serverObs.size);
+        obstacle.id = serverObs.id;
+        this.obstacles.push(obstacle);
+      }
+    });
+  }
+
+  /**
+   * Sync lasers from server state (removed - lasers created from actions)
+   */
+  syncLasers(serverLasers) {
+    // Lasers are now created from actions, not synced from server
+    // This method kept for compatibility but does nothing
+  }
+
+  /**
+   * Sync network players from server state snapshot
+   */
+  syncNetworkPlayers(serverPlayers) {
+    if (!serverPlayers) return;
+    
+    const myPlayerId = this.networkClient?.getPlayerId();
+    
+    serverPlayers.forEach(playerState => {
+      // Skip our own ship
+      if (playerState.id === myPlayerId) return;
+      
+      if (this.networkPlayers.has(playerState.id)) {
+        // Update existing network player position/state
+        const networkShip = this.networkPlayers.get(playerState.id);
+        const oldPos = { x: networkShip.position.x, y: networkShip.position.y };
+        networkShip.updateFromServer(playerState);
+        
+        // Log if position changed significantly
+        const dx = Math.abs(playerState.position.x - oldPos.x);
+        const dy = Math.abs(playerState.position.y - oldPos.y);
+        if (dx > 1 || dy > 1) {
+          console.log(`[CLIENT] Updated network player ${playerState.id.substring(0, 8)}: pos (${oldPos.x.toFixed(1)}, ${oldPos.y.toFixed(1)}) -> (${playerState.position.x.toFixed(1)}, ${playerState.position.y.toFixed(1)}), energy: ${playerState.energy.toFixed(1)}`);
+        }
+      } else {
+        // Create new network player
+        console.log(`[CLIENT] Creating new network player ${playerState.id.substring(0, 8)} at (${playerState.position.x.toFixed(1)}, ${playerState.position.y.toFixed(1)})`);
+        const networkShip = new NetworkPlayerShip(playerState, this);
+        this.networkPlayers.set(playerState.id, networkShip);
+        
+        // Add to npcShips for rendering/collision
+        this.npcShips.push(networkShip);
+        this.updateEntities();
+      }
+    });
+    
+    // Remove network players not in server state
+    for (const [playerId, networkShip] of this.networkPlayers.entries()) {
+      if (!serverPlayers.find(s => s.id === playerId)) {
+        console.log(`[CLIENT] Removing network player ${playerId.substring(0, 8)}`);
+        const index = this.npcShips.indexOf(networkShip);
+        if (index > -1) {
+          this.npcShips.splice(index, 1);
+        }
+        this.networkPlayers.delete(playerId);
+        this.updateEntities();
+      }
+    }
+  }
+
+
+  /**
+   * Update entities array
+   */
+  updateEntities() {
+    this.entities = [this.ship, ...this.obstacles, ...this.npcShips];
+  }
+
+  /**
+   * Update connection status UI (to be implemented)
+   */
+  updateConnectionStatus(connected) {
+    const statusEl = document.getElementById('connectionStatus');
+    if (statusEl) {
+      statusEl.textContent = connected ? 'Connected' : 'Disconnected';
+      statusEl.style.color = connected ? '#0f0' : '#f00';
+    }
+  }
+
+  /**
+   * Update player count UI (to be implemented)
+   */
+  updatePlayerCount(count) {
+    const countEl = document.getElementById('playerCount');
+    if (countEl) {
+      countEl.textContent = `${count} player${count !== 1 ? 's' : ''}`;
+    }
+  }
+
+  /**
+   * Check if player state has changed significantly
+   */
+  hasStateChanged(position, velocity, energy) {
+    const posChanged = 
+      Math.abs(position.x - this.lastSentState.position.x) > this.stateChangeThreshold.position ||
+      Math.abs(position.y - this.lastSentState.position.y) > this.stateChangeThreshold.position;
+    
+    const velChanged =
+      Math.abs(velocity.x - this.lastSentState.velocity.x) > this.stateChangeThreshold.velocity ||
+      Math.abs(velocity.y - this.lastSentState.velocity.y) > this.stateChangeThreshold.velocity;
+    
+    const energyChanged = 
+      Math.abs(energy - this.lastSentState.energy) > this.stateChangeThreshold.energy;
+    
+    return posChanged || velChanged || energyChanged;
   }
 
   reset() {
@@ -215,18 +581,21 @@ export class Game {
   update(dt) {
     // Ship angle is updated by Input when engine angle changes
     
-    // Regenerate obstacles if none exist
-    if (this.obstacles.length === 0) {
-      this.generateObstacles();
-      // Update entities array
-      this.entities = [this.ship, ...this.obstacles, ...this.npcShips];
-    }
-    
-    // Regenerate NPCs if none exist
-    if (this.npcShips.length === 0) {
-      this.generateNPCs();
-      // Update entities array
-      this.entities = [this.ship, ...this.obstacles, ...this.npcShips];
+    // In multiplayer mode, server controls obstacles and NPCs
+    if (!this.multiplayer) {
+      // Regenerate obstacles if none exist
+      if (this.obstacles.length === 0) {
+        this.generateObstacles();
+        // Update entities array
+        this.updateEntities();
+      }
+      
+      // Regenerate NPCs if none exist
+      if (this.npcShips.length === 0) {
+        this.generateNPCs();
+        // Update entities array
+        this.updateEntities();
+      }
     }
     
     // Check for player ship explosion
@@ -271,12 +640,15 @@ export class Game {
         }
     }
 
-    // Update NPC ships
+    // Update NPC ships and network players
     for (let i = this.npcShips.length - 1; i >= 0; i--) {
         const npcShip = this.npcShips[i];
         
+        // Check if it's a network player
+        const isNetworkPlayer = this.networkPlayers.has(npcShip.id);
+        
         // Check for explosion
-        if (npcShip.checkExplosion()) {
+        if (!isNetworkPlayer && npcShip.checkExplosion()) {
             console.log('NPC ship exploded!');
         }
         
@@ -285,45 +657,69 @@ export class Game {
             if (npcShip.updateExplosion(dt)) {
                 // Explosion complete - remove NPC
                 this.npcShips.splice(i, 1);
+                if (isNetworkPlayer) {
+                    this.networkPlayers.delete(npcShip.id);
+                }
                 continue;
             }
         } else {
-            // Energy Regeneration for NPCs
-            if (npcShip.energy < npcShip.maxEnergy) {
-                npcShip.energy += npcShip.energyRegen * dt;
-                if (npcShip.energy > npcShip.maxEnergy) npcShip.energy = npcShip.maxEnergy;
-            }
-
-            // Update NPC AI
-            if (npcShip.ai) {
-                npcShip.ai.update(dt);
-            }
-
-            // Update NPC shield state & drain
-            const npcShieldActiveRequest = (npcShip.controlMode === 'SHIELD');
-            const npcShieldCostRate = (npcShip.shieldPower / 100) * 30;
-            const npcShieldFrameCost = npcShieldCostRate * dt;
-
-            if (npcShieldActiveRequest && npcShip.energy > npcShieldFrameCost) {
-                npcShip.shield.active = true;
-                npcShip.shield.angle = npcShip.shieldAngle;
-                npcShip.shield.power = npcShip.shieldPower;
-                npcShip.energy -= npcShieldFrameCost;
+            // Network players are updated from server state
+            if (isNetworkPlayer) {
+                npcShip.update(dt);
             } else {
-                npcShip.shield.active = false;
-            }
+                // Regular NPC AI logic
+                // Energy Regeneration for NPCs
+                if (npcShip.energy < npcShip.maxEnergy) {
+                    npcShip.energy += npcShip.energyRegen * dt;
+                    if (npcShip.energy > npcShip.maxEnergy) npcShip.energy = npcShip.maxEnergy;
+                }
 
-            // Apply physics to NPCs
-            this.physics.applyPhysics(npcShip);
+                // Update NPC AI
+                if (npcShip.ai) {
+                    npcShip.ai.update(dt);
+                }
 
-            // Bounds checking for NPCs
-            if (npcShip.position.x < 0 || npcShip.position.x > this.width) {
-                npcShip.velocity.x *= -0.5;
-                npcShip.position.x = Math.max(0, Math.min(npcShip.position.x, this.width));
-            }
-            if (npcShip.position.y < 0 || npcShip.position.y > this.height) {
-                npcShip.velocity.y *= -0.5;
-                npcShip.position.y = Math.max(0, Math.min(npcShip.position.y, this.height));
+                // Update NPC shield state & drain
+                // Shield cannot be active when shooting (WEAPON mode) - same as player ship
+                const npcShieldActiveRequest = (npcShip.controlMode === 'SHIELD');
+                const isShooting = (npcShip.controlMode === 'WEAPON' && npcShip.weaponPower > 0);
+                
+                // Check if NPC recently fired (within fire cooldown)
+                let recentlyFired = false;
+                if (npcShip.ai && npcShip.ai.lastFireTime) {
+                    const timeSinceFire = npcShip.ai.currentTime - npcShip.ai.lastFireTime;
+                    recentlyFired = timeSinceFire < npcShip.ai.fireCooldown;
+                }
+                
+                const npcShieldCostRate = (npcShip.shieldPower / 100) * 30;
+                const npcShieldFrameCost = npcShieldCostRate * dt;
+
+                // Shield can only be active if:
+                // 1. Control mode is SHIELD (requested)
+                // 2. Not currently shooting (WEAPON mode with weaponPower > 0)
+                // 3. Not recently fired (within fire cooldown)
+                // 4. Has enough energy
+                if (npcShieldActiveRequest && !isShooting && !recentlyFired && npcShip.energy > npcShieldFrameCost) {
+                    npcShip.shield.active = true;
+                    npcShip.shield.angle = npcShip.shieldAngle;
+                    npcShip.shield.power = npcShip.shieldPower;
+                    npcShip.energy -= npcShieldFrameCost;
+                } else {
+                    npcShip.shield.active = false;
+                }
+
+                // Apply physics to NPCs
+                this.physics.applyPhysics(npcShip);
+
+                // Bounds checking for NPCs
+                if (npcShip.position.x < 0 || npcShip.position.x > this.width) {
+                    npcShip.velocity.x *= -0.5;
+                    npcShip.position.x = Math.max(0, Math.min(npcShip.position.x, this.width));
+                }
+                if (npcShip.position.y < 0 || npcShip.position.y > this.height) {
+                    npcShip.velocity.y *= -0.5;
+                    npcShip.position.y = Math.max(0, Math.min(npcShip.position.y, this.height));
+                }
             }
         }
     }
@@ -342,9 +738,35 @@ export class Game {
     // Update Score UI
     this.updateScoreDisplay();
 
-    // Update Physics (only if not exploded)
+    // Update Physics (client handles all physics)
     if (!this.ship.exploded) {
         this.physics.applyPhysics(this.ship);
+        
+        // Send position update to server only if state changed
+        if (this.multiplayer && this.networkClient && this.networkClient.isConnected()) {
+          const stateChanged = this.hasStateChanged(
+            this.ship.position,
+            this.ship.velocity,
+            this.ship.energy
+          );
+          
+          if (stateChanged) {
+            console.log(`[CLIENT] Sending state update: pos (${this.ship.position.x.toFixed(1)}, ${this.ship.position.y.toFixed(1)}), energy ${this.ship.energy.toFixed(1)}`);
+            
+            this.networkClient.sendPlayerState(
+              this.ship.position,
+              this.ship.velocity,
+              this.ship.energy
+            );
+            
+            // Update last sent state
+            this.lastSentState = {
+              position: { x: this.ship.position.x, y: this.ship.position.y },
+              velocity: { x: this.ship.velocity.x, y: this.ship.velocity.y },
+              energy: this.ship.energy
+            };
+          }
+        }
     }
 
     // Update Lasers
@@ -516,9 +938,6 @@ export class Game {
             if (dist < this.ship.size) {
               // Check if shield protects
               let isProtected = false;
-              console.log('Checking player ship',this.ship.id, laser.id,
-                this.ship.shield.active,
-              );
               if (this.ship.shield.active) {
                 const angleToLaser = Math.atan2(dy, dx);
                 let shieldFacing = this.ship.shield.angle % (Math.PI * 2);

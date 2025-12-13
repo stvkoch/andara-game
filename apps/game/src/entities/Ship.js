@@ -260,25 +260,47 @@ export class Ship extends Entity {
 
     ctx.restore();
 
-    // Draw Shield (if active)
-    if (this.shield.active) {
+    // Draw Shield (always show for NPCs, only when active for player)
+    if (this.shield.active || (this.isNPC && this.shieldPower > 0)) {
         ctx.save();
         ctx.translate(this.position.x, this.position.y);
-        ctx.rotate(this.shield.angle);
+        // Use shield.angle if active, otherwise use shieldAngle property
+        const shieldAngle = this.shield.active ? this.shield.angle : this.shieldAngle;
+        ctx.rotate(shieldAngle);
         
         const radius = this.size + 15; // Fixed radius
         const maxSpread = Math.PI; // Max is Semicircle (180 degrees)
-        const spread = (this.shield.power / 100) * maxSpread;
+        // Use shield.power if active, otherwise use shieldPower property
+        const shieldPower = this.shield.active ? this.shield.power : this.shieldPower;
+        const spread = (shieldPower / 100) * maxSpread;
         const startAngle = -spread / 2;
         const endAngle = spread / 2;
         
         ctx.beginPath();
         ctx.arc(0, 0, radius, startAngle, endAngle);
-        ctx.strokeStyle = `rgba(0, 255, 255, ${0.5 + (this.shield.power / 200)})`; // Cyan glow
-        ctx.lineWidth = 4;
+        
+        // Dimmer for inactive shields on NPCs
+        const alpha = this.shield.active 
+          ? (0.5 + (shieldPower / 200))
+          : (0.2 + (shieldPower / 500)); // Dimmer when inactive
+        ctx.strokeStyle = `rgba(0, 255, 255, ${alpha})`; // Cyan glow
+        ctx.lineWidth = this.shield.active ? 4 : 2; // Thinner when inactive
         ctx.stroke();
 
         ctx.restore();
+    }
+
+    // Draw Weapon Aim Indicator for NPCs (similar to player ship)
+    if (this.isNPC && this.weaponPower > 0) {
+        const aimAngle = this.weaponAngle;
+        const aimDist = this.size + 7;
+        const aimX = this.position.x + Math.cos(aimAngle) * aimDist;
+        const aimY = this.position.y + Math.sin(aimAngle) * aimDist;
+
+        ctx.fillStyle = '#ff00ff';
+        ctx.beginPath();
+        ctx.arc(aimX, aimY, 2, 0, Math.PI * 2); // Slightly smaller for NPCs
+        ctx.fill();
     }
 
     // Draw Energy Bar as bottom line for NPCs

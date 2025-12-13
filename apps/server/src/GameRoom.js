@@ -205,55 +205,58 @@ export class GameRoom {
   }
 
   /**
-   * Update game state
+   * Update game state - now only sends periodic state snapshots
+   * Clients handle all physics locally
    */
   update(dt) {
     const now = Date.now();
     
-    // Update each ship based on player input
+    // Only update player input states (no physics simulation)
     for (const [playerId, player] of this.players.entries()) {
       const ship = this.gameState.ships.get(playerId);
       if (!ship || ship.exploded) continue;
 
-      // Apply player input
+      // Update ship state from player input (angles, powers, etc.)
       if (player.lastInput) {
-        this.applyPlayerInput(ship, player.lastInput, dt);
-      }
-
-      // Update physics
-      this.updateShipPhysics(ship, dt);
-
-      // Regenerate energy
-      if (ship.energy < ship.maxEnergy) {
-        ship.energy = Math.min(ship.maxEnergy, ship.energy + 7 * dt);
+        this.updateShipState(ship, player.lastInput);
       }
     }
 
-    // Update lasers
-    this.updateLasers(dt);
-
-    // Check collisions
-    this.checkCollisions();
-
-    // Regenerate obstacles if needed
+    // Regenerate obstacles if needed (server manages obstacles)
     if (this.gameState.obstacles.length < 5) {
       this.generateObstacles(5);
     }
 
-    // Broadcast game state to all players
-    this.broadcast({
-      type: 'gameState',
-      gameState: this.getGameState(),
-      timestamp: now
-    });
+    // Send periodic state snapshot (positions, energy, etc.) - less frequent
+    // Clients handle physics, server just syncs state
+    if (now - this.gameState.lastUpdate > 100) { // Every 100ms instead of every frame
+      const playerStates = this.getPlayerStates();
+      const snapshot = {
+        type: 'stateSnapshot',
+        players: playerStates,
+        obstacles: this.gameState.obstacles.map(o => ({
+          id: o.id,
+          x: o.x,
+          y: o.y,
+          size: o.size
+        })),
+        stars: this.gameState.stars,
+        width: this.gameState.width,
+        height: this.gameState.height,
+        timestamp: now
+      };
+      
+      console.log(`[SERVER] Broadcasting state snapshot: ${playerStates.length} players, ${this.gameState.obstacles.length} obstacles`);
+      this.broadcast(snapshot);
 
-    this.gameState.lastUpdate = now;
+      this.gameState.lastUpdate = now;
+    }
   }
 
   /**
-   * Apply player input to ship
+   * Update ship state from player input (no physics, just state)
    */
-  applyPlayerInput(ship, input, dt) {
+  updateShipState(ship, input) {
     // Update control mode
     if (input.controlMode) {
       ship.controlMode = input.controlMode;
@@ -267,249 +270,95 @@ export class GameRoom {
     if (input.shieldAngle !== undefined) ship.shieldAngle = input.shieldAngle;
     if (input.shieldPower !== undefined) ship.shieldPower = input.shieldPower;
 
-    // Handle actions
-    if (input.shouldLaunch) {
-      this.executeLaunch(ship);
-    }
-
-    if (input.shouldFire) {
-      this.executeFire(ship);
-    }
-
-    // Handle shield
+    // Handle shield state
     if (input.shieldEnergized !== undefined) {
       ship.shieldEnergized = input.shieldEnergized;
     }
+    ship.shieldActive = ship.shieldEnergized || false;
 
-    if (ship.shieldEnergized && ship.energy > 0) {
-      const shieldCostRate = (ship.shieldPower / 100) * 30;
-      const shieldFrameCost = shieldCostRate * dt;
-      
-      if (ship.energy > shieldFrameCost) {
-        ship.shieldActive = true;
-        ship.energy -= shieldFrameCost;
-      } else {
-        ship.shieldActive = false;
-        ship.shieldEnergized = false;
-      }
-    } else {
-      ship.shieldActive = false;
-    }
-  }
-
-  /**
-   * Execute engine launch
-   */
-  executeLaunch(ship) {
-    if (ship.energy <= 0 || ship.exploded) return;
-
-    const launchCost = ship.enginePower * 3;
-    if (ship.energy >= launchCost) {
-      const force = {
-        x: Math.cos(ship.engineAngle) * (ship.enginePower / 10),
-        y: Math.sin(ship.engineAngle) * (ship.enginePower / 10)
+    // Broadcast actions to other players (client handles physics)
+    if (input.shouldLaunch) {
+      const action = {
+        type: 'playerLaunch',
+        playerId: ship.id,
+        engineAngle: ship.engineAngle,
+        enginePower: ship.enginePower,
+        timestamp: Date.now()
       };
-      
-      ship.velocity.x += force.x;
-      ship.velocity.y += force.y;
-      ship.energy -= launchCost;
+      console.log(`[SERVER] Broadcasting action: ${action.type} from player ${ship.id.substring(0, 8)}`);
+      this.broadcastAction(action, ship.id);
+    }
+
+    if (input.shouldFire) {
+      const action = {
+        type: 'playerFire',
+        playerId: ship.id,
+        weaponAngle: ship.weaponAngle,
+        weaponPower: ship.weaponPower,
+        position: { x: ship.position.x, y: ship.position.y },
+        timestamp: Date.now()
+      };
+      console.log(`[SERVER] Broadcasting action: ${action.type} from player ${ship.id.substring(0, 8)} at (${action.position.x.toFixed(1)}, ${action.position.y.toFixed(1)})`);
+      this.broadcastAction(action, ship.id);
     }
   }
 
   /**
-   * Execute weapon fire
+   * Broadcast action to all players except sender
    */
-  executeFire(ship) {
-    if (ship.energy <= 0 || ship.exploded) return;
-
-    const fireCost = ship.weaponPower * 1.2;
-    if (ship.energy >= fireCost) {
-      this.gameState.lasers.push({
-        id: uuidv4(),
-        ownerId: ship.id,
-        position: { ...ship.position },
-        angle: ship.weaponAngle,
-        speed: ship.weaponPower / 10,
-        damage: fireCost,
-        life: 3.0 // seconds
-      });
-      ship.energy -= fireCost;
-    }
+  broadcastAction(action, excludePlayerId = null) {
+    const excludeWs = excludePlayerId ? this.players.get(excludePlayerId)?.ws : null;
+    this.broadcast({
+      type: 'action',
+      action: action
+    }, excludeWs);
   }
 
   /**
-   * Update ship physics
+   * Get player states for snapshot
    */
-  updateShipPhysics(ship, dt) {
-    // Apply drag
-    const drag = 0.01;
-    ship.velocity.x *= (1 - drag);
-    ship.velocity.y *= (1 - drag);
-
-    // Update position
-    ship.position.x += ship.velocity.x * dt * 60; // Scale for game speed
-    ship.position.y += ship.velocity.y * dt * 60;
-
-    // Bounds checking
-    if (ship.position.x < 0 || ship.position.x > this.gameState.width) {
-      ship.velocity.x *= -0.5;
-      ship.position.x = Math.max(0, Math.min(ship.position.x, this.gameState.width));
-    }
-    if (ship.position.y < 0 || ship.position.y > this.gameState.height) {
-      ship.velocity.y *= -0.5;
-      ship.position.y = Math.max(0, Math.min(ship.position.y, this.gameState.height));
-    }
-  }
-
-  /**
-   * Update lasers
-   */
-  updateLasers(dt) {
-    for (let i = this.gameState.lasers.length - 1; i >= 0; i--) {
-      const laser = this.gameState.lasers[i];
-      
-      laser.position.x += Math.cos(laser.angle) * laser.speed * dt * 60;
-      laser.position.y += Math.sin(laser.angle) * laser.speed * dt * 60;
-      laser.life -= dt;
-
-      // Remove expired lasers
-      if (laser.life <= 0) {
-        this.gameState.lasers.splice(i, 1);
-        continue;
-      }
-
-      // Remove lasers out of bounds
-      if (laser.position.x < 0 || laser.position.x > this.gameState.width ||
-          laser.position.y < 0 || laser.position.y > this.gameState.height) {
-        this.gameState.lasers.splice(i, 1);
-      }
-    }
-  }
-
-  /**
-   * Check collisions
-   */
-  checkCollisions() {
-    // Laser vs Ships
-    for (let i = this.gameState.lasers.length - 1; i >= 0; i--) {
-      const laser = this.gameState.lasers[i];
-      
-      for (const [playerId, ship] of this.gameState.ships.entries()) {
-        if (ship.id === laser.ownerId || ship.exploded) continue;
-
-        const dx = laser.position.x - ship.position.x;
-        const dy = laser.position.y - ship.position.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist < ship.size) {
-          // Check shield protection
-          let isProtected = false;
-          if (ship.shieldActive) {
-            const angleToLaser = Math.atan2(dy, dx);
-            let shieldFacing = ship.shieldAngle % (Math.PI * 2);
-            if (shieldFacing > Math.PI) shieldFacing -= Math.PI * 2;
-            
-            const maxSpread = Math.PI;
-            const spread = (ship.shieldPower / 100) * maxSpread;
-            const halfSpread = spread / 2;
-            let diff = angleToLaser - shieldFacing;
-            
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
-            
-            if (Math.abs(diff) < halfSpread) {
-              isProtected = true;
-            }
-          }
-
-          this.gameState.lasers.splice(i, 1);
-
-          if (!isProtected) {
-            ship.energy -= laser.damage;
-            if (ship.energy < 0) {
-              ship.exploded = true;
-            }
-          }
-          break;
-        }
-      }
-
-      // Laser vs Obstacles
-      for (let j = this.gameState.obstacles.length - 1; j >= 0; j--) {
-        const obstacle = this.gameState.obstacles[j];
-        const dx = laser.position.x - obstacle.x;
-        const dy = laser.position.y - obstacle.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist < obstacle.size) {
-          obstacle.size -= laser.damage * 0.5;
-          this.gameState.lasers.splice(i, 1);
-          
-          if (obstacle.size < 10) {
-            this.gameState.obstacles.splice(j, 1);
-          }
-          break;
-        }
-      }
-    }
-
-    // Ship vs Obstacles
+  getPlayerStates() {
+    const states = [];
     for (const [playerId, ship] of this.gameState.ships.entries()) {
-      if (ship.exploded) continue;
-
-      for (const obstacle of this.gameState.obstacles) {
-        const dx = ship.position.x - obstacle.x;
-        const dy = ship.position.y - obstacle.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const minDist = ship.size + obstacle.size;
-
-        if (dist < minDist) {
-          const normal = {
-            x: dx / dist,
-            y: dy / dist
-          };
-          const overlap = minDist - dist;
-          
-          ship.position.x += normal.x * (overlap + 1);
-          ship.position.y += normal.y * (overlap + 1);
-          ship.velocity.x *= -0.5;
-          ship.velocity.y *= -0.5;
-        }
-      }
+      states.push({
+        id: ship.id,
+        position: { x: ship.position.x, y: ship.position.y },
+        velocity: { x: ship.velocity.x, y: ship.velocity.y },
+        energy: ship.energy,
+        maxEnergy: ship.maxEnergy,
+        controlMode: ship.controlMode,
+        engineAngle: ship.engineAngle,
+        enginePower: ship.enginePower,
+        weaponAngle: ship.weaponAngle,
+        weaponPower: ship.weaponPower,
+        shieldAngle: ship.shieldAngle,
+        shieldPower: ship.shieldPower,
+        shieldActive: ship.shieldActive,
+        exploded: ship.exploded
+      });
     }
+    return states;
+  }
 
-    // Ship vs Ship
-    const shipsArray = Array.from(this.gameState.ships.values());
-    for (let i = 0; i < shipsArray.length; i++) {
-      const ship1 = shipsArray[i];
-      if (ship1.exploded) continue;
 
-      for (let j = i + 1; j < shipsArray.length; j++) {
-        const ship2 = shipsArray[j];
-        if (ship2.exploded) continue;
-
-        const dx = ship1.position.x - ship2.position.x;
-        const dy = ship1.position.y - ship2.position.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const minDist = ship1.size + ship2.size;
-
-        if (dist < minDist) {
-          const normal = {
-            x: dx / dist,
-            y: dy / dist
-          };
-          const overlap = minDist - dist;
-          
-          ship1.position.x += normal.x * (overlap / 2);
-          ship1.position.y += normal.y * (overlap / 2);
-          ship2.position.x -= normal.x * (overlap / 2);
-          ship2.position.y -= normal.y * (overlap / 2);
-          
-          ship1.velocity.x *= -0.5;
-          ship1.velocity.y *= -0.5;
-          ship2.velocity.x *= -0.5;
-          ship2.velocity.y *= -0.5;
-        }
+  /**
+   * Update player position from client (client sends position updates periodically)
+   */
+  updatePlayerPosition(playerId, position, velocity, energy) {
+    const ship = this.gameState.ships.get(playerId);
+    if (ship) {
+      const oldPos = { x: ship.position.x, y: ship.position.y };
+      ship.position.x = position.x;
+      ship.position.y = position.y;
+      ship.velocity.x = velocity.x;
+      ship.velocity.y = velocity.y;
+      ship.energy = energy;
+      
+      // Log if position changed significantly
+      const dx = Math.abs(position.x - oldPos.x);
+      const dy = Math.abs(position.y - oldPos.y);
+      if (dx > 1 || dy > 1) {
+        console.log(`[SERVER] Updated player ${playerId.substring(0, 8)} position: (${oldPos.x.toFixed(1)}, ${oldPos.y.toFixed(1)}) -> (${position.x.toFixed(1)}, ${position.y.toFixed(1)}), energy: ${energy.toFixed(1)}`);
       }
     }
   }

@@ -5,6 +5,7 @@ export class Obstacle extends Entity {
     super(x, y);
     this.size = radius;
     this.color = '#ff4444';
+    this.id = null; // Will be set if synced from server
   }
 
   draw(ctx) {

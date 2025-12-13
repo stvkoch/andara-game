@@ -74,13 +74,11 @@ export class NPCAI {
         // Switch to pursuing main ship when obstacles are less than half of ships
         this.state = AI_STATE.DESTROY_MAIN_SHIP;
         this.target = this.game.ship;
-        console.log(`NPC ${this.ship.id} switching to pursue main ship (obstacles: ${totalObstacles} < ships/2: ${halfShips})`);
         return;
       }
     }
 
     // If we're idle, track the time
-    console.log('Checking idle pursuit', this.state);
     if (this.state === AI_STATE.IDLE) {
       // Initialize idle start time if just entered idle
       if (this.idleStartTime === 0) {
@@ -95,7 +93,6 @@ export class NPCAI {
         this.hasTriggeredIdlePursuit = true;
         this.state = AI_STATE.DESTROY_MAIN_SHIP;
         this.target = this.game.ship;
-        console.log(`NPC ${this.ship.id} idle for ${idleDuration.toFixed(1)}s - pursuing main ship!`);
       }
     } else {
       // Not idle, reset idle tracking
@@ -163,7 +160,6 @@ export class NPCAI {
       [AI_STATE.DESTROY_OTHER_SHIPS]: this.scoreDestroyOtherShips(),
       [AI_STATE.DESTROY_OBSTACLES]: this.scoreDestroyObstacles(),
     };
-    console.log('Scores', scores);
 
     // Pick best score
     let bestKey = AI_STATE.DESTROY_OBSTACLES;
@@ -481,10 +477,13 @@ export class NPCAI {
     const ready = this.currentTime - this.lastFireTime >= this.fireCooldown;
     if (!ready) return;
 
-    // Need some energy reserve so NPC doesn’t self-delete instantly
+    // Need some energy reserve so NPC doesn't self-delete instantly
     if (this.ship.energy < 12) return;
 
     this.ship.controlMode = "WEAPON";
+    
+    // Disable shield when shooting (shield cannot be active while shooting)
+    this.ship.shield.energized = false;
 
     // Power is tuned to your Laser usage (it uses weaponPower as damage-ish)
     // Keep it reasonable so NPCs don't one-shot everything.
@@ -529,6 +528,9 @@ export class NPCAI {
       this.ship.weaponPower > 0 &&
       this.ship.energy >= this.ship.weaponPower
     ) {
+      // Disable shield when shooting (shield cannot be active while shooting)
+      this.ship.shield.energized = false;
+      
       const fireCost = this.ship.weaponPower;
 
       this.game.lasers.push(
