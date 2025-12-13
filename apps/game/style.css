@@ -36,16 +36,15 @@ canvas {
 
 #ui-layer {
   position: absolute;
-  top: 20px;
-  left: 20px;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 20px;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  border: 1px solid #444;
-  max-width: 300px;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+#ui-layer > * {
+  pointer-events: auto;
 }
 
 .mode-group {
@@ -150,4 +149,345 @@ button:active {
     height: 100%;
     background: #0f0;
     transition: width 0.1s;
+}
+
+/* Top UI Bar */
+.top-ui-bar {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    z-index: 10;
+}
+
+/* System Selector Buttons */
+.system-selector {
+    display: flex;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 8px;
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+}
+
+.system-btn {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(100, 100, 100, 0.4);
+    border: 2px solid transparent;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: rgba(255, 255, 255, 0.6);
+    padding: 0;
+}
+
+.system-btn:hover {
+    background: rgba(100, 100, 100, 0.6);
+    transform: scale(1.05);
+}
+
+.system-btn.active {
+    background: rgba(100, 108, 255, 0.5);
+    border-color: #646cff;
+    color: #fff;
+    box-shadow: 0 0 15px rgba(100, 108, 255, 0.6);
+}
+
+.system-btn[data-mode="WEAPON"].active {
+    background: rgba(255, 0, 255, 0.5);
+    border-color: #ff00ff;
+    box-shadow: 0 0 15px rgba(255, 0, 255, 0.6);
+}
+
+.system-btn[data-mode="SHIELD"].active {
+    background: rgba(0, 255, 255, 0.5);
+    border-color: #00ffff;
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.6);
+}
+
+.system-btn svg {
+    width: 24px;
+    height: 24px;
+}
+
+/* Energy Display (Top Bar) */
+.energy-display-top {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 8px 15px;
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+    min-width: 150px;
+}
+
+.energy-bar-container {
+    flex: 1;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+#energyBar {
+    height: 100%;
+    background: linear-gradient(90deg, #0f0, #0f0);
+    transition: width 0.1s, background-color 0.2s;
+    border-radius: 6px;
+}
+
+.energy-value {
+    color: #0f0;
+    font-weight: bold;
+    font-size: 0.9em;
+    min-width: 45px;
+    text-align: right;
+}
+
+/* Direction Indicator (Radar) */
+.direction-indicator {
+    width: 60px;
+    height: 60px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(10px);
+}
+
+.direction-indicator svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* Bottom UI Bar */
+.bottom-ui-bar {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    z-index: 10;
+}
+
+/* Joystick */
+.joystick-container {
+    position: relative;
+    width: 120px;
+    height: 120px;
+}
+
+.joystick {
+    width: 120px;
+    height: 120px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    position: relative;
+    backdrop-filter: blur(10px);
+}
+
+.joystick-knob {
+    width: 50px;
+    height: 50px;
+    background: rgba(100, 100, 100, 0.8);
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    cursor: grab;
+    transition: transform 0.1s;
+}
+
+.joystick-knob:active {
+    cursor: grabbing;
+}
+
+.joystick-labels {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.joystick-label-top,
+.joystick-label-right,
+.joystick-label-bottom,
+.joystick-label-left {
+    position: absolute;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.7em;
+    font-weight: bold;
+}
+
+.joystick-label-top {
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.joystick-label-right {
+    right: -25px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.joystick-label-bottom {
+    bottom: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.joystick-label-left {
+    left: -25px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* Power Slider */
+.power-slider-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 10px 15px;
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+}
+
+.power-slider-labels {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.7em;
+    font-weight: bold;
+}
+
+.power-slider-wrapper {
+    position: relative;
+    width: 150px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.power-slider {
+    width: 150px;
+    height: 8px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    outline: none;
+}
+
+.power-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.power-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.power-value-display {
+    position: absolute;
+    top: -25px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #fff;
+    font-weight: bold;
+    font-size: 1em;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+/* Action Button (Circle) */
+.action-btn-circle {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(100, 108, 255, 0.8);
+    border: 3px solid rgba(255, 255, 255, 0.5);
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    padding: 0;
+}
+
+.action-btn-circle:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.action-btn-circle:active {
+    transform: scale(0.95);
+}
+
+.action-btn-circle.weapon-mode {
+    background: rgba(255, 0, 255, 0.8);
+}
+
+.action-btn-circle.shield-mode {
+    background: rgba(0, 255, 255, 0.8);
+}
+
+.action-btn-circle svg {
+    width: 32px;
+    height: 32px;
+}
+
+/* Score Display */
+.score-display {
+    position: absolute;
+    top: 50%;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 10px 15px;
+    border-radius: 12px;
+    color: #ffd700;
+    font-weight: bold;
+    font-size: 0.9em;
+    backdrop-filter: blur(10px);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    z-index: 10;
 }

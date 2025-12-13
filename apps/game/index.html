@@ -10,6 +10,7 @@
     <div id="app">
       <canvas id="gameCanvas"></canvas>
       <div id="ui-layer">
+        <!-- Multiplayer controls (hidden) -->
         <div id="multiplayer-controls" style="display: none; position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; color: white; font-size: 12px;">
           <div style="margin-bottom: 5px;">
             <label>Server: <input type="text" id="serverUrl" value="ws://localhost:3001" style="width: 150px; padding: 2px;"></label>
@@ -27,77 +28,106 @@
           </div>
         </div>
         
-        <div id="score-display">
-            <label>SCORE: <span id="scoreValue">0</span></label>
-            <label style="margin-left: 20px;">LEVEL: <span id="levelValue">1</span></label>
-        </div>
-        
-        <div id="energy-display">
-            <label>ENERGY: <span id="energyValue">100</span>%</label>
+        <!-- Top UI Bar -->
+        <div id="top-ui-bar" class="top-ui-bar">
+          <!-- Left: System Selector Buttons -->
+          <div id="system-selector" class="system-selector">
+            <button id="engineModeBtn" class="system-btn active" data-mode="ENGINE" title="Engine System (E)">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2L2 7L12 12L22 7L12 2Z"/>
+                <path d="M2 17L12 22L22 17"/>
+                <path d="M2 12L12 17L22 12"/>
+              </svg>
+            </button>
+            <button id="weaponModeBtn" class="system-btn" data-mode="WEAPON" title="Weapon System (W)">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2L3 7L12 12L21 7L12 2Z"/>
+                <path d="M3 17L12 22L21 17"/>
+                <path d="M3 12L12 17L21 12"/>
+              </svg>
+            </button>
+            <button id="shieldModeBtn" class="system-btn" data-mode="SHIELD" title="Shield System (S)">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2L3 7L12 12L21 7L12 2Z" stroke-linecap="round"/>
+                <path d="M12 12L3 17L12 22L21 17L12 12Z" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          
+          <!-- Middle: Energy Bar -->
+          <div id="energy-display" class="energy-display-top">
             <div class="energy-bar-container">
-                <div id="energyBar"></div>
+              <div id="energyBar"></div>
             </div>
+            <span id="energyValue" class="energy-value">100%</span>
+          </div>
+          
+          <!-- Right: Direction Indicator (Radar) -->
+          <div id="direction-indicator" class="direction-indicator">
+            <svg width="60" height="60" viewBox="0 0 60 60">
+              <circle cx="30" cy="30" r="28" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2"/>
+              <circle cx="30" cy="30" r="20" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+              <line id="directionNeedle" x1="30" y1="30" x2="30" y2="10" stroke="#0f0" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
         </div>
 
-        <div id="engine-controls" class="mode-group active-mode">
-            <label style="color:#646cff; font-weight:bold;">ENGINE SYSTEM (E)</label>
-            <div class="control-group">
-            <label>
-                Direction (Angle): <span id="angleValue" class="value-display">0°</span>
-            </label>
-            <input type="range" id="angleInput" min="0" max="360" value="0">
+        <!-- Bottom UI Bar -->
+        <div id="bottom-ui-bar" class="bottom-ui-bar">
+          <!-- Left: Joystick for Angle Control -->
+          <div id="joystick-container" class="joystick-container">
+            <div id="joystick" class="joystick">
+              <div id="joystick-knob" class="joystick-knob"></div>
             </div>
-            
-            <div class="control-group">
-            <label>
-                Power: <span id="powerValue" class="value-display">50%</span>
-            </label>
-            <input type="range" id="powerInput" min="0" max="100" value="50">
+            <div class="joystick-labels">
+              <span class="joystick-label-top">0°</span>
+              <span class="joystick-label-right">90°</span>
+              <span class="joystick-label-bottom">180°</span>
+              <span class="joystick-label-left">270°</span>
             </div>
-            <button id="launchBtn">ENGAGE ENGINES (Space)</button>
+          </div>
+          
+          <!-- Middle: Horizontal Power Slider -->
+          <div id="power-slider-container" class="power-slider-container">
+            <div class="power-slider-labels">
+              <span class="power-label-left">0%</span>
+              <span class="power-label-right">100%</span>
+            </div>
+            <div class="power-slider-wrapper">
+              <input type="range" id="powerInput" class="power-slider" min="0" max="100" value="50">
+              <div id="powerValue" class="power-value-display">50%</div>
+            </div>
+          </div>
+          
+          <!-- Right: Action Button -->
+          <button id="actionBtn" class="action-btn-circle">
+            <svg id="actionIcon" width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+          </button>
         </div>
 
-        <hr style="width:100%; border:0; border-top:1px solid #555; margin: 10px 0;">
-        
-        <div id="weapon-controls" class="mode-group">
-            <label style="color:#f0f; font-weight:bold;">WEAPON SYSTEM (W)</label>
-            <div class="control-group">
-            <label>
-                Aim Angle: <span id="weaponAngleValue" class="value-display">0°</span>
-            </label>
-            <input type="range" id="weaponAngleInput" min="0" max="360" value="0">
-            </div>
-            
-            <div class="control-group">
-            <label>
-                Weapon Power: <span id="weaponPowerValue" class="value-display">50%</span>
-            </label>
-            <input type="range" id="weaponPowerInput" min="0" max="100" value="50">
-            </div>
-            <button id="fireBtn" style="background-color: #ff00ff;">FIRE LASER (Space)</button>
+        <!-- Score Display (top right corner) -->
+        <div id="score-display" class="score-display">
+          <div>SCORE: <span id="scoreValue">0</span></div>
+          <div>LEVEL: <span id="levelValue">1</span></div>
         </div>
 
-        <hr style="width:100%; border:0; border-top:1px solid #555; margin: 10px 0;">
-
-        <div id="shield-controls" class="mode-group">
-            <label style="color:#00ffff; font-weight:bold;">SHIELD SYSTEM (S)</label>
-            <div class="control-group">
-            <label>
-                Shield Angle: <span id="shieldAngleValue" class="value-display">0°</span>
-            </label>
-            <input type="range" id="shieldAngleInput" min="0" max="360" value="0">
-            </div>
-            
-            <div class="control-group">
-            <label>
-                Shield Arc (Power): <span id="shieldPowerValue" class="value-display">50%</span>
-            </label>
-            <input type="range" id="shieldPowerInput" min="0" max="100" value="50">
-            </div>
-            <button id="energizeShieldBtn" style="background-color: #00ffff;">ENERGIZE SHIELD (Space)</button>
-        </div>
-
-        <button id="resetBtn" style="background-color: #666; margin-top: 20px;">STOP / RESET (Esc)</button>
+        <!-- Hidden inputs for compatibility -->
+        <input type="range" id="angleInput" min="0" max="360" value="0" style="display: none;">
+        <input type="range" id="weaponAngleInput" min="0" max="360" value="0" style="display: none;">
+        <input type="range" id="weaponPowerInput" min="0" max="100" value="50" style="display: none;">
+        <input type="range" id="shieldAngleInput" min="0" max="360" value="0" style="display: none;">
+        <input type="range" id="shieldPowerInput" min="0" max="100" value="50" style="display: none;">
+        <span id="angleValue" class="value-display" style="display: none;">0°</span>
+        <span id="weaponAngleValue" class="value-display" style="display: none;">0°</span>
+        <span id="weaponPowerValue" class="value-display" style="display: none;">50%</span>
+        <span id="shieldAngleValue" class="value-display" style="display: none;">0°</span>
+        <span id="shieldPowerValue" class="value-display" style="display: none;">50%</span>
+        <button id="launchBtn" style="display: none;"></button>
+        <button id="fireBtn" style="display: none;"></button>
+        <button id="energizeShieldBtn" style="display: none;"></button>
+        <button id="resetBtn" style="display: none;"></button>
       </div>
     </div>
     <script type="module" src="/main.js"></script>
