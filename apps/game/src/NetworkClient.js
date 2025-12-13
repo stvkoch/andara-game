@@ -185,6 +185,7 @@ export class NetworkClient {
     }
   }
 
+
   /**
    * Handle incoming server messages
    */

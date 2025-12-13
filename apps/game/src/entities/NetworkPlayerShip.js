@@ -50,6 +50,7 @@ export class NetworkPlayerShip extends Ship {
     this.shieldAngle = shipState.shieldAngle;
     this.shieldPower = shipState.shieldPower;
     this.shield.active = shipState.shieldActive || false;
+    this.shield.energized = shipState.shieldEnergized !== undefined ? shipState.shieldEnergized : (shipState.shieldActive || false);
     this.exploded = shipState.exploded || false;
 
     // Update network AI with state

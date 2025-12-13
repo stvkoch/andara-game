@@ -32,14 +32,14 @@ export class NPCAI {
     this.target = null;
 
     // Behavior tuning
-    this.safeDistance = 90; // if closer than this to threats -> evade
-    this.attackRange = 320; // consider targets within this range
-    this.preferredFightDistance = 180; // try to keep around this distance
+    this.safeDistance = Math.random() * 120 + 60; // if closer than this to threats -> evade
+    this.attackRange = Math.random() * 200 + 120; // consider targets within this range
+    this.preferredFightDistance = Math.random() * 200 + 100; // try to keep around this distance
 
     // Personality (optional-ish)
-    this.aggression = 0.6; // 0..1 more likely to focus ships vs obstacles
-    this.accuracyJitter = 0.06; // radians
-    this.strafeChance = 0.7;
+    this.aggression = Math.random() * 0.5 + 0.5; // 0..1 more likely to focus ships vs obstacles
+    this.accuracyJitter = Math.random() * 0.12 + 0.03; // radians
+    this.strafeChance = Math.random() * 0.3 + 0.4; // 0.4..0.7 chance to strafe
 
     // Minor randomness so NPCs don't feel identical
     this._seed = Math.random() * 1000;

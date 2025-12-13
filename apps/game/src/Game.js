@@ -286,6 +286,14 @@ export class Game {
         this.handlePlayerLaunch(action);
         break;
       
+      case 'playerShieldChange':
+        this.handlePlayerShieldChange(action);
+        break;
+      
+      case 'playerEnergyChange':
+        this.handlePlayerEnergyChange(action);
+        break;
+      
       default:
         console.warn(`[CLIENT] Unknown action type: ${type}`);
     }
@@ -327,6 +335,86 @@ export class Game {
     const force = Vector2.fromAngle(action.engineAngle).mult(action.enginePower / 10);
     this.physics.applyForce(networkShip, force);
     console.log(`[CLIENT] Applied launch action: applied force ${force.mag().toFixed(2)} at angle ${(action.engineAngle * 180 / Math.PI).toFixed(1)}° to player ${action.playerId?.substring(0, 8)}`);
+  }
+
+  /**
+   * Handle player shield state change action
+   */
+  handlePlayerShieldChange(action) {
+    const networkShip = this.networkPlayers.get(action.playerId);
+    if (!networkShip) {
+      console.warn(`[CLIENT] Cannot handle shield change action: network ship ${action.playerId?.substring(0, 8)} not found`);
+      return;
+    }
+
+    // Update shield state
+    networkShip.shield.energized = action.shieldEnergized;
+    networkShip.shield.active = action.shieldEnergized;
+    networkShip.shieldAngle = action.shieldAngle;
+    networkShip.shieldPower = action.shieldPower;
+    
+    if (action.shieldEnergized) {
+      networkShip.shield.angle = action.shieldAngle;
+      networkShip.shield.power = action.shieldPower;
+    }
+    
+    console.log(`[CLIENT] Applied shield change action: player ${action.playerId?.substring(0, 8)} shield energized: ${action.shieldEnergized}`);
+  }
+
+  /**
+   * Handle player energy change from laser hit
+   */
+  handlePlayerEnergyChange(action) {
+    const myPlayerId = this.networkClient?.getPlayerId();
+    
+    // Check if this is our own ship
+    if (action.playerId === myPlayerId) {
+      // Apply energy change to main ship (server correction/authoritative)
+      const oldEnergy = this.ship.energy;
+      this.ship.energy = action.energy;
+      if (action.shieldPower !== undefined) {
+        this.ship.shieldPower = action.shieldPower;
+      }
+      console.log(`[CLIENT] Applied energy change to main ship: energy ${oldEnergy.toFixed(1)} -> ${action.energy.toFixed(1)}`);
+      
+      // Update UI
+      if (this.energyValue) {
+        this.energyValue.textContent = Math.floor(this.ship.energy);
+      }
+      if (this.energyBar) {
+        this.energyBar.style.width = `${(this.ship.energy / this.ship.maxEnergy) * 100}%`;
+        this.energyBar.style.backgroundColor = this.ship.energy < 20 ? '#ff0000' : '#0f0';
+      }
+      return;
+    }
+
+    // Otherwise, it's a network player (NPC)
+    const networkShip = this.networkPlayers.get(action.playerId);
+    if (!networkShip) {
+      // Also check regular NPCs (non-network)
+      const npcShip = this.npcShips.find(npc => npc.id === action.playerId);
+      if (npcShip) {
+        const oldEnergy = npcShip.energy;
+        npcShip.energy = action.energy;
+        if (action.shieldPower !== undefined) {
+          npcShip.shieldPower = action.shieldPower;
+        }
+        console.log(`[CLIENT] Applied energy change to NPC ${action.playerId?.substring(0, 8)}: energy ${oldEnergy.toFixed(1)} -> ${action.energy.toFixed(1)}`);
+        return;
+      }
+      
+      console.warn(`[CLIENT] Cannot handle energy change action: ship ${action.playerId?.substring(0, 8)} not found`);
+      return;
+    }
+
+    // Update energy and shield power for network player
+    const oldEnergy = networkShip.energy;
+    networkShip.energy = action.energy;
+    if (action.shieldPower !== undefined) {
+      networkShip.shieldPower = action.shieldPower;
+    }
+    
+    console.log(`[CLIENT] Applied energy change to network player ${action.playerId?.substring(0, 8)}: energy ${oldEnergy.toFixed(1)} -> ${action.energy.toFixed(1)}`);
   }
 
   /**
@@ -467,6 +555,25 @@ export class Game {
       Math.abs(energy - this.lastSentState.energy) > this.stateChangeThreshold.energy;
     
     return posChanged || velChanged || energyChanged;
+  }
+
+  /**
+   * Broadcast energy change to server when laser hits
+   */
+  broadcastEnergyChange(playerId, energy, shieldPower) {
+    if (!this.multiplayer || !this.networkClient || !this.networkClient.isConnected()) {
+      return;
+    }
+
+    // Send energy change action to server
+    this.networkClient.send({
+      type: 'energyChange',
+      payload: {
+        playerId: playerId,
+        energy: energy,
+        shieldPower: shieldPower
+      }
+    });
   }
 
   reset() {
@@ -960,8 +1067,17 @@ export class Game {
               laserHit = true;
               if (isProtected && this.ship.shieldPower > 0) {
                 this.ship.shieldPower -= laser.damage;
+                // Broadcast shield power change in multiplayer
+                if (this.multiplayer && this.networkClient && this.networkClient.isConnected()) {
+                  this.broadcastEnergyChange(this.ship.id, this.ship.energy, this.ship.shieldPower);
+                }
               } else {
+                const oldEnergy = this.ship.energy;
                 this.ship.energy -= laser.damage;
+                // Broadcast energy change in multiplayer
+                if (this.multiplayer && this.networkClient && this.networkClient.isConnected()) {
+                  this.broadcastEnergyChange(this.ship.id, this.ship.energy, this.ship.shieldPower);
+                }
               }
             }
           }
@@ -993,10 +1109,26 @@ export class Game {
                             }
                         }
                         if (!isProtected) {
+                          const oldEnergy = npcShip.energy;
                           npcShip.energy -= laser.damage;
+                          
+                          // Broadcast energy change for network players
+                          const isNetworkPlayer = this.networkPlayers.has(npcShip.id);
+                          if (isNetworkPlayer && this.multiplayer && this.networkClient && this.networkClient.isConnected()) {
+                            this.broadcastEnergyChange(npcShip.id, npcShip.energy, npcShip.shieldPower);
+                          }
+                          
                           if (isMyLaser) {
                             this.ship.score += 10;
                             this.updateScoreDisplay();
+                          }
+                          this.lasers.splice(i, 1);
+                        } else {
+                          // Shield protected - broadcast shield power change
+                          const isNetworkPlayer = this.networkPlayers.has(npcShip.id);
+                          if (isNetworkPlayer && this.multiplayer && this.networkClient && this.networkClient.isConnected()) {
+                            npcShip.shieldPower -= laser.damage;
+                            this.broadcastEnergyChange(npcShip.id, npcShip.energy, npcShip.shieldPower);
                           }
                           this.lasers.splice(i, 1);
                         }

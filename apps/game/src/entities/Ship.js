@@ -260,18 +260,16 @@ export class Ship extends Entity {
 
     ctx.restore();
 
-    // Draw Shield (always show for NPCs, only when active for player)
-    if (this.shield.active || (this.isNPC && this.shieldPower > 0)) {
+    // Draw Shield (always show for NPCs when energized, only when active for player)
+    if (this.shield.active || (this.isNPC && this.shield.energized && this.shieldPower > 0)) {
         ctx.save();
         ctx.translate(this.position.x, this.position.y);
-        // Use shield.angle if active, otherwise use shieldAngle property
-        const shieldAngle = this.shield.active ? this.shield.angle : this.shieldAngle;
-        ctx.rotate(shieldAngle);
+        ctx.rotate(this.shieldAngle);
         
         const radius = this.size + 15; // Fixed radius
         const maxSpread = Math.PI; // Max is Semicircle (180 degrees)
         // Use shield.power if active, otherwise use shieldPower property
-        const shieldPower = this.shield.active ? this.shield.power : this.shieldPower;
+        const shieldPower = this.shieldPower;
         const spread = (shieldPower / 100) * maxSpread;
         const startAngle = -spread / 2;
         const endAngle = spread / 2;

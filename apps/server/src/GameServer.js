@@ -54,6 +54,10 @@ export class GameServer {
         this.handlePlayerState(ws, payload);
         break;
       
+      case 'energyChange':
+        this.handleEnergyChange(ws, payload);
+        break;
+      
       case 'ping':
         ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
         break;
@@ -234,6 +238,38 @@ export class GameServer {
 
     this.players.delete(ws);
     console.log(`Player ${playerInfo.playerId} disconnected`);
+  }
+
+  /**
+   * Handle energy change from laser hit
+   */
+  handleEnergyChange(ws, payload) {
+    const playerInfo = this.players.get(ws);
+    
+    if (!playerInfo) {
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: 'Not in a room. Please join first.'
+      }));
+      return;
+    }
+
+    const room = this.rooms.get(playerInfo.roomId);
+    
+    if (!room) {
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: 'Room not found'
+      }));
+      return;
+    }
+
+    // Update energy and broadcast to other players
+    room.updatePlayerEnergy(
+      payload.playerId,
+      payload.energy,
+      payload.shieldPower
+    );
   }
 }
 

@@ -97,7 +97,12 @@ export class GameRoom {
       name: playerName,
       ws,
       lastInput: null,
-      lastPing: Date.now()
+      lastPing: Date.now(),
+      lastProcessedActions: {
+        shouldLaunch: false,
+        shouldFire: false
+      },
+      lastShieldEnergized: false
     };
 
     this.players.set(playerId, player);
@@ -218,7 +223,7 @@ export class GameRoom {
 
       // Update ship state from player input (angles, powers, etc.)
       if (player.lastInput) {
-        this.updateShipState(ship, player.lastInput);
+        this.updateShipState(ship, player.lastInput, player);
       }
     }
 
@@ -256,7 +261,7 @@ export class GameRoom {
   /**
    * Update ship state from player input (no physics, just state)
    */
-  updateShipState(ship, input) {
+  updateShipState(ship, input, player) {
     // Update control mode
     if (input.controlMode) {
       ship.controlMode = input.controlMode;
@@ -272,12 +277,30 @@ export class GameRoom {
 
     // Handle shield state
     if (input.shieldEnergized !== undefined) {
+      const shieldStateChanged = ship.shieldEnergized !== input.shieldEnergized;
       ship.shieldEnergized = input.shieldEnergized;
+      ship.shieldActive = ship.shieldEnergized || false;
+      
+      // Broadcast shield state change as action
+      if (shieldStateChanged) {
+        const action = {
+          type: 'playerShieldChange',
+          playerId: ship.id,
+          shieldEnergized: ship.shieldEnergized,
+          shieldAngle: ship.shieldAngle,
+          shieldPower: ship.shieldPower,
+          timestamp: Date.now()
+        };
+        console.log(`[SERVER] Broadcasting action: ${action.type} from player ${ship.id.substring(0, 8)}, energized: ${ship.shieldEnergized}`);
+        this.broadcastAction(action, ship.id);
+      }
+    } else {
+      ship.shieldActive = ship.shieldEnergized || false;
     }
-    ship.shieldActive = ship.shieldEnergized || false;
 
     // Broadcast actions to other players (client handles physics)
-    if (input.shouldLaunch) {
+    // Only broadcast if this is a new action (wasn't processed before)
+    if (input.shouldLaunch && !player.lastProcessedActions.shouldLaunch) {
       const action = {
         type: 'playerLaunch',
         playerId: ship.id,
@@ -287,9 +310,13 @@ export class GameRoom {
       };
       console.log(`[SERVER] Broadcasting action: ${action.type} from player ${ship.id.substring(0, 8)}`);
       this.broadcastAction(action, ship.id);
+      player.lastProcessedActions.shouldLaunch = true;
+    } else if (!input.shouldLaunch) {
+      // Reset flag when action is no longer active
+      player.lastProcessedActions.shouldLaunch = false;
     }
 
-    if (input.shouldFire) {
+    if (input.shouldFire && !player.lastProcessedActions.shouldFire) {
       const action = {
         type: 'playerFire',
         playerId: ship.id,
@@ -300,6 +327,10 @@ export class GameRoom {
       };
       console.log(`[SERVER] Broadcasting action: ${action.type} from player ${ship.id.substring(0, 8)} at (${action.position.x.toFixed(1)}, ${action.position.y.toFixed(1)})`);
       this.broadcastAction(action, ship.id);
+      player.lastProcessedActions.shouldFire = true;
+    } else if (!input.shouldFire) {
+      // Reset flag when action is no longer active
+      player.lastProcessedActions.shouldFire = false;
     }
   }
 
@@ -334,6 +365,7 @@ export class GameRoom {
         shieldAngle: ship.shieldAngle,
         shieldPower: ship.shieldPower,
         shieldActive: ship.shieldActive,
+        shieldEnergized: ship.shieldEnergized || false,
         exploded: ship.exploded
       });
     }
@@ -360,6 +392,31 @@ export class GameRoom {
       if (dx > 1 || dy > 1) {
         console.log(`[SERVER] Updated player ${playerId.substring(0, 8)} position: (${oldPos.x.toFixed(1)}, ${oldPos.y.toFixed(1)}) -> (${position.x.toFixed(1)}, ${position.y.toFixed(1)}), energy: ${energy.toFixed(1)}`);
       }
+    }
+  }
+
+  /**
+   * Update player energy from laser hit and broadcast to other players
+   */
+  updatePlayerEnergy(playerId, energy, shieldPower) {
+    const ship = this.gameState.ships.get(playerId);
+    if (ship) {
+      const oldEnergy = ship.energy;
+      ship.energy = energy;
+      if (shieldPower !== undefined) {
+        ship.shieldPower = shieldPower;
+      }
+      
+      // Broadcast energy change action to other players
+      const action = {
+        type: 'playerEnergyChange',
+        playerId: playerId,
+        energy: energy,
+        shieldPower: shieldPower,
+        timestamp: Date.now()
+      };
+      console.log(`[SERVER] Broadcasting energy change: player ${playerId.substring(0, 8)} energy ${oldEnergy.toFixed(1)} -> ${energy.toFixed(1)}`);
+      this.broadcastAction(action, playerId);
     }
   }
 }
