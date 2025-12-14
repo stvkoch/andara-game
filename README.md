@@ -2,6 +2,10 @@
 
 This is a pnpm workspace monorepo for the Andara Game project.
 
+https://andara-game.netlify.app/
+
+
+
 ## Structure
 
 ```
